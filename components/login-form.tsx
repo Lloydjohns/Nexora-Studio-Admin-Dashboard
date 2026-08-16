@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
-  Zap,
   Mail,
   Lock,
   ArrowRight,
@@ -99,14 +99,15 @@ export function LoginForm({
         <div className="pointer-events-none absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-violet-500/10 blur-3xl" />
 
         <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white shadow-lg">
-              <Zap className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">Nexora Studio</p>
-              <p className="text-xs text-white/50">Admin Dashboard</p>
-            </div>
+          <div className="w-fit rounded-xl bg-white p-3 shadow-lg shadow-black/10 ring-1 ring-white/20">
+            <Image
+              src="/images/companylogo.png"
+              alt="Nexora Studio — Branding & Design"
+              width={260}
+              height={75}
+              className="h-auto w-56 object-contain"
+              priority
+            />
           </div>
         </div>
 
@@ -155,14 +156,15 @@ export function LoginForm({
       <div className="flex w-full flex-col items-center justify-center bg-background p-6 lg:w-1/2">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-violet-600 text-white">
-              <Zap className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-bold">Nexora Studio</p>
-              <p className="text-[10px] text-muted-foreground">Admin Dashboard</p>
-            </div>
+          <div className="mb-8 w-fit rounded-lg border bg-white p-2 shadow-sm lg:hidden">
+            <Image
+              src="/images/companylogo.png"
+              alt="Nexora Studio — Branding & Design"
+              width={180}
+              height={52}
+              className="h-auto w-40 object-contain"
+              priority
+            />
           </div>
 
           {configError && (
