@@ -1248,6 +1248,47 @@ export const navItems = [
   { label: 'Settings', href: '/settings', icon: 'Settings' },
 ];
 
+export const navGroups = [
+  {
+    title: 'Overview',
+    items: [
+      { label: 'Dashboard', href: '/', icon: 'LayoutDashboard' },
+      { label: 'Clients', href: '/clients', icon: 'Users' },
+      { label: 'Leads & Inquiries', href: '/leads', icon: 'UserSearch' },
+      { label: 'Discovery Calls', href: '/discovery-calls', icon: 'PhoneCall' },
+    ],
+  },
+  {
+    title: 'Growth',
+    items: [
+      { label: 'Projects', href: '/projects', icon: 'FolderKanban' },
+      { label: 'Social Media', href: '/social', icon: 'Share2' },
+      { label: 'Website Requests', href: '/website-requests', icon: 'Globe' },
+    ],
+  },
+  {
+    title: 'Delivery',
+    items: [
+      { label: 'Calendar', href: '/calendar', icon: 'CalendarDays' },
+      { label: 'Team', href: '/team', icon: 'UsersRound' },
+      { label: 'Finance', href: '/finance', icon: 'Wallet' },
+      { label: 'Analytics', href: '/analytics', icon: 'BarChart3' },
+      { label: 'Reports', href: '/reports', icon: 'FileText' },
+    ],
+  },
+  {
+    title: 'Commerce',
+    items: [
+      { label: 'Digital Products', href: '/products', icon: 'Package' },
+      { label: 'Orders', href: '/orders', icon: 'ShoppingBag' },
+    ],
+  },
+  {
+    title: 'Studio',
+    items: [{ label: 'Settings', href: '/settings', icon: 'Settings' }],
+  },
+];
+
 export const formatPeso = (n: number) =>
   '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
