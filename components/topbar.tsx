@@ -47,6 +47,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const [mounted, setMounted] = React.useState(false);
   const [cmdOpen, setCmdOpen] = React.useState(false);
   const [qcOpen, setQcOpen] = React.useState(false);
+  const [now, setNow] = React.useState(new Date());
 
   const { data: notificationsData } = useFetch(fetchNotifications);
   const notifications = notificationsData ?? [];
@@ -60,7 +61,13 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       }
     };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.clearInterval(timer);
+    };
   }, []);
 
   const unreadCount = notifications.filter((n: any) => n.unread).length;
@@ -82,6 +89,20 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   const initials = user?.email?.slice(0, 2).toUpperCase() ?? 'U';
   const displayName = user?.email?.split('@')[0] ?? 'User';
+  const timeParts = {
+    date: new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(now),
+    time: new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(now),
+  };
 
   return (
     <>
@@ -94,6 +115,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
+
+        <div className="hidden items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-[11px] font-medium text-muted-foreground md:flex">
+          <span className="text-foreground">{timeParts.date}</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="tabular-nums text-foreground">{timeParts.time}</span>
+        </div>
 
         {/* Search */}
         <div className="relative flex-1 max-w-md">

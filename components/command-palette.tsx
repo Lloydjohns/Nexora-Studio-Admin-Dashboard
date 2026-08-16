@@ -58,6 +58,14 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
 
+  const quickActions = [
+    { label: 'Create new client', href: '/clients', icon: Plus },
+    { label: 'Add a project', href: '/projects', icon: Plus },
+    { label: 'Schedule content', href: '/social', icon: Plus },
+    { label: 'Generate invoice', href: '/finance', icon: Plus },
+    { label: 'Search clients', href: '/clients', icon: Search },
+  ];
+
   const go = (href: string) => {
     onOpenChange(false);
     router.push(href);
@@ -85,26 +93,19 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Quick Actions">
-          <CommandItem className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            Create new client
-          </CommandItem>
-          <CommandItem className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            Add a project
-          </CommandItem>
-          <CommandItem className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            Schedule content
-          </CommandItem>
-          <CommandItem className="gap-2">
-            <Plus className="h-4 w-4 text-muted-foreground" />
-            Generate invoice
-          </CommandItem>
-          <CommandItem className="gap-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            Search clients
-          </CommandItem>
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <CommandItem
+                key={action.label}
+                onSelect={() => go(action.href)}
+                className="gap-2"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                {action.label}
+              </CommandItem>
+            );
+          })}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

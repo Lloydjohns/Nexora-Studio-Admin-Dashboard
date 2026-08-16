@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AreaChart,
   Area,
@@ -102,6 +103,14 @@ export default function DashboardPage() {
   const { data: revenueData, loading: revenueLoading } = useFetch(fetchMonthlyRevenue);
   const { data: productSalesData, loading: productSalesLoading } = useFetch(fetchProductSales);
   const { data: callBookingsData, loading: callBookingsLoading } = useFetch(fetchCallBookings);
+  const [period, setPeriod] = React.useState<'12M' | '30D' | '7D'>('12M');
+  const [now, setNow] = React.useState(new Date());
+  const router = useRouter();
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const anyError = clientsError;
 
@@ -155,14 +164,71 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Executive overview of Nexora Studio operations"
       >
-        <Button variant="outline" size="sm">
-          Last 12 months
-        </Button>
-        <Button size="sm">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={period === '12M' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPeriod('12M')}
+          >
+            Last 12 months
+          </Button>
+          <Button
+            variant={period === '30D' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPeriod('30D')}
+          >
+            30 days
+          </Button>
+          <Button
+            variant={period === '7D' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPeriod('7D')}
+          >
+            7 days
+          </Button>
+        </div>
+        <Button size="sm" onClick={() => router.push('/reports')}>
           <ArrowUpRight className="mr-1.5 h-4 w-4" />
           View Reports
         </Button>
       </PageHeader>
+
+      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Realtime</p>
+          <p className="mt-1 text-sm font-medium text-foreground">Operations overview is updating live.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-center">
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Date</p>
+            <p className="mt-1 text-xs font-semibold tabular-nums text-foreground">
+              {new Intl.DateTimeFormat('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              }).format(now)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Hr</p>
+            <p className="mt-1 text-xs font-semibold tabular-nums text-foreground">
+              {String(now.getHours()).padStart(2, '0')}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Min</p>
+            <p className="mt-1 text-xs font-semibold tabular-nums text-foreground">
+              {String(now.getMinutes()).padStart(2, '0')}
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2">
+            <p className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Sec</p>
+            <p className="mt-1 text-xs font-semibold tabular-nums text-foreground">
+              {String(now.getSeconds()).padStart(2, '0')}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* KPI cards */}
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
