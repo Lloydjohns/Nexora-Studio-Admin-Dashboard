@@ -75,14 +75,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         <div className="flex h-20 items-center justify-between border-b border-[hsl(var(--sidebar-border))] px-4">
           <Link href="/" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
-            <Image
-              src="/images/companylogo-transparent.png"
-              alt="Nexora Studio"
-              width={400}
-              height={268}
-              className="h-14 w-auto object-contain dark:brightness-0 dark:invert"
-              priority
-            />
+            <div className="flex h-12 w-48 items-center rounded-lg bg-white px-2 shadow-sm ring-1 ring-black/5">
+              <Image
+                src="/images/companylogo.png"
+                alt="Nexora Studio"
+                width={180}
+                height={52}
+                className="h-auto w-full object-contain"
+                priority
+              />
+            </div>
           </Link>
           <Button
             variant="ghost"
