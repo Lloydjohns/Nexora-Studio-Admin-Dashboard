@@ -99,16 +99,14 @@ export function LoginForm({
         <div className="pointer-events-none absolute -bottom-40 -left-20 h-96 w-96 rounded-full bg-violet-500/10 blur-3xl" />
 
         <div className="relative z-10">
-          <div className="w-fit rounded-xl bg-white p-3 shadow-lg shadow-black/10 ring-1 ring-white/20">
-            <Image
-              src="/images/companylogo.png"
-              alt="Nexora Studio — Branding & Design"
-              width={260}
-              height={75}
-              className="h-auto w-56 object-contain"
-              priority
-            />
-          </div>
+          <Image
+            src="/images/companylogo-transparent.png"
+            alt="Nexora Studio — Branding & Design"
+            width={400}
+            height={268}
+            className="h-auto w-52 object-contain brightness-0 invert"
+            priority
+          />
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -156,13 +154,13 @@ export function LoginForm({
       <div className="flex w-full flex-col items-center justify-center bg-background p-6 lg:w-1/2">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="mb-8 w-fit rounded-lg border bg-white p-2 shadow-sm lg:hidden">
+          <div className="mb-8 lg:hidden">
             <Image
-              src="/images/companylogo.png"
+              src="/images/companylogo-transparent.png"
               alt="Nexora Studio — Branding & Design"
-              width={180}
-              height={52}
-              className="h-auto w-40 object-contain"
+              width={400}
+              height={268}
+              className="h-auto w-32 object-contain"
               priority
             />
           </div>
