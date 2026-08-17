@@ -71,6 +71,15 @@ const roles = [
 
 export default function SettingsPage() {
   const [active, setActive] = React.useState('profile');
+  const [profile, setProfile] = React.useState({
+    name: agency.name, tagline: agency.tagline, email: agency.email, phone: agency.phone, location: agency.location,
+  });
+  const [accentColor, setAccentColor] = React.useState('hsl(243, 75%, 59%)');
+  const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+  const [paymentSettings, setPaymentSettings] = React.useState({ currency: 'PHP (₱)', terms: 'Net 15' });
+  const [integrationStates, setIntegrationStates] = React.useState(integrations);
+  const [calendarSync, setCalendarSync] = React.useState({ google: true, outlook: false });
+  const [templates, setTemplates] = React.useState(emailTemplates);
   const [notifications, setNotifications] = React.useState({
     newLead: true,
     callBooked: true,
@@ -84,12 +93,39 @@ export default function SettingsPage() {
   const [templateBody, setTemplateBody] = React.useState('');
   const [permsOpen, setPermsOpen] = React.useState(false);
   const [permsRole, setPermsRole] = React.useState('');
+  const [rolePermissions, setRolePermissions] = React.useState<Record<string, Record<string, boolean>>>({});
 
-  const save = () => toast.success('Settings saved successfully');
+  React.useEffect(() => {
+    const saved = window.localStorage.getItem('nexora-settings');
+    if (!saved) return;
+    try {
+      const data = JSON.parse(saved);
+      if (data.profile) setProfile(data.profile);
+      if (data.accentColor) setAccentColor(data.accentColor);
+      if (data.theme) setTheme(data.theme);
+      if (data.paymentSettings) setPaymentSettings(data.paymentSettings);
+      if (data.integrationStates) setIntegrationStates(data.integrationStates);
+      if (data.calendarSync) setCalendarSync(data.calendarSync);
+      if (data.notifications) setNotifications(data.notifications);
+      if (data.templates) setTemplates(data.templates);
+      if (data.rolePermissions) setRolePermissions(data.rolePermissions);
+    } catch {
+      window.localStorage.removeItem('nexora-settings');
+    }
+  }, []);
+
+  const save = () => {
+    window.localStorage.setItem('nexora-settings', JSON.stringify({ profile, accentColor, theme, paymentSettings, integrationStates, calendarSync, notifications, templates, rolePermissions }));
+    toast.success('Settings saved successfully');
+  };
+
+  const updateIntegration = (name: string) => {
+    setIntegrationStates((current) => current.map((integration) => integration.name === name ? { ...integration, status: integration.status === 'Connected' ? 'Not connected' : 'Connected' } : integration));
+  };
 
   const openTemplate = (name: string) => {
     setTemplateName(name);
-    setTemplateBody(emailTemplates[name] ?? '');
+    setTemplateBody(templates[name] ?? '');
     setTemplateOpen(true);
   };
 
@@ -146,11 +182,11 @@ export default function SettingsPage() {
                   </Button>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div><Label className="mb-1.5 block text-xs">Business Name</Label><Input defaultValue={agency.name} /></div>
-                  <div><Label className="mb-1.5 block text-xs">Tagline</Label><Input defaultValue={agency.tagline} /></div>
-                  <div><Label className="mb-1.5 block text-xs">Email</Label><Input defaultValue={agency.email} /></div>
-                  <div><Label className="mb-1.5 block text-xs">Phone</Label><Input defaultValue={agency.phone} /></div>
-                  <div className="sm:col-span-2"><Label className="mb-1.5 block text-xs">Location</Label><Input defaultValue={agency.location} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Business Name</Label><Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Tagline</Label><Input value={profile.tagline} onChange={(e) => setProfile({ ...profile, tagline: e.target.value })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Email</Label><Input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Phone</Label><Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} /></div>
+                  <div className="sm:col-span-2"><Label className="mb-1.5 block text-xs">Location</Label><Input value={profile.location} onChange={(e) => setProfile({ ...profile, location: e.target.value })} /></div>
                 </div>
               </CardContent>
             </Card>
@@ -163,8 +199,8 @@ export default function SettingsPage() {
                 <div>
                   <Label className="mb-2 block text-xs">Accent Color</Label>
                   <div className="flex gap-2">
-                    {['hsl(243, 75%, 59%)', 'hsl(262, 83%, 58%)', 'hsl(199, 89%, 48%)', 'hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)'].map((c, i) => (
-                      <button key={c} className={cn('h-10 w-10 rounded-lg border-2', i === 0 ? 'border-foreground' : 'border-transparent')} style={{ background: c }} />
+                    {['hsl(243, 75%, 59%)', 'hsl(262, 83%, 58%)', 'hsl(199, 89%, 48%)', 'hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)'].map((c) => (
+                      <button key={c} aria-label={`Use accent color ${c}`} onClick={() => setAccentColor(c)} className={cn('h-10 w-10 rounded-lg border-2', accentColor === c ? 'border-foreground' : 'border-transparent')} style={{ background: c }} />
                     ))}
                   </div>
                 </div>
@@ -172,14 +208,14 @@ export default function SettingsPage() {
                 <div>
                   <Label className="mb-2 block text-xs">Theme</Label>
                   <div className="flex gap-2">
-                    <div className="flex-1 cursor-pointer rounded-lg border-2 border-foreground p-3">
+                    <button type="button" onClick={() => setTheme('light')} className={cn('flex-1 rounded-lg border-2 p-3 text-left', theme === 'light' ? 'border-foreground' : 'border-transparent')}>
                       <div className="mb-2 h-12 rounded bg-white border" />
                       <p className="text-xs font-medium">Light</p>
-                    </div>
-                    <div className="flex-1 cursor-pointer rounded-lg border-2 border-transparent p-3">
+                    </button>
+                    <button type="button" onClick={() => setTheme('dark')} className={cn('flex-1 rounded-lg border-2 p-3 text-left', theme === 'dark' ? 'border-foreground' : 'border-transparent')}>
                       <div className="mb-2 h-12 rounded bg-slate-900 border border-slate-700" />
                       <p className="text-xs font-medium">Dark</p>
-                    </div>
+                    </button>
                   </div>
                 </div>
               </CardContent>
@@ -208,12 +244,12 @@ export default function SettingsPage() {
               <CardHeader><CardTitle className="text-base">Payment Settings</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div><Label className="mb-1.5 block text-xs">Currency</Label><Input defaultValue="PHP (₱)" /></div>
-                  <div><Label className="mb-1.5 block text-xs">Default Payment Terms</Label><Input defaultValue="Net 15" /></div>
+                  <div><Label className="mb-1.5 block text-xs">Currency</Label><Input value={paymentSettings.currency} onChange={(e) => setPaymentSettings({ ...paymentSettings, currency: e.target.value })} /></div>
+                  <div><Label className="mb-1.5 block text-xs">Default Payment Terms</Label><Input value={paymentSettings.terms} onChange={(e) => setPaymentSettings({ ...paymentSettings, terms: e.target.value })} /></div>
                 </div>
                 <Separator />
                 <p className="text-xs font-semibold">Payment Methods</p>
-                {integrations.slice(0, 3).map((int) => (
+                {integrationStates.slice(0, 3).map((int) => (
                   <div key={int.name} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex items-center gap-3">
                       <div className={cn('h-8 w-8 rounded-lg', int.color)} />
@@ -243,7 +279,7 @@ export default function SettingsPage() {
                       <p className="text-xs text-emerald-600">Connected · syncing</p>
                     </div>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch checked={calendarSync.google} onCheckedChange={(google) => setCalendarSync({ ...calendarSync, google })} />
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div className="flex items-center gap-3">
@@ -252,10 +288,10 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">Outlook Calendar</p>
-                      <p className="text-xs text-muted-foreground">Not connected</p>
+                      <p className="text-xs text-muted-foreground">{calendarSync.outlook ? 'Connected · syncing' : 'Not connected'}</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">Connect</Button>
+                  <Button variant="outline" size="sm" onClick={() => setCalendarSync({ ...calendarSync, outlook: !calendarSync.outlook })}>{calendarSync.outlook ? 'Disconnect' : 'Connect'}</Button>
                 </div>
               </CardContent>
             </Card>
@@ -312,7 +348,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">API Integrations</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {integrations.map((int) => (
+                {integrationStates.map((int) => (
                   <div key={int.name} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex items-center gap-3">
                       <div className={cn('h-9 w-9 rounded-lg', int.color)} />
@@ -322,9 +358,9 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     {int.status === 'Connected' ? (
-                      <Button variant="outline" size="sm" onClick={() => toast.info(`${int.name} settings opened`, { description: 'Configure your integration preferences.' })}>Manage</Button>
+                      <Button variant="outline" size="sm" onClick={() => updateIntegration(int.name)}>Disconnect</Button>
                     ) : (
-                      <Button size="sm" onClick={() => toast.success(`${int.name} connected`, { description: 'Authorization complete. You can now use this integration.' })}>Connect</Button>
+                      <Button size="sm" onClick={() => updateIntegration(int.name)}>Connect</Button>
                     )}
                   </div>
                 ))}
@@ -379,7 +415,7 @@ export default function SettingsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTemplateOpen(false)}>Cancel</Button>
             <Button onClick={() => {
-              emailTemplates[templateName] = templateBody;
+              setTemplates((current) => ({ ...current, [templateName]: templateBody }));
               setTemplateOpen(false);
               toast.success('Template saved');
             }}>Save Template</Button>
@@ -404,7 +440,13 @@ export default function SettingsPage() {
             ].map((p) => (
               <div key={p.label} className="flex items-center justify-between rounded-lg border p-3">
                 <span className="text-sm">{p.label}</span>
-                <Switch defaultChecked={p.on} />
+                <Switch
+                  checked={rolePermissions[permsRole]?.[p.label] ?? p.on}
+                  onCheckedChange={(enabled) => setRolePermissions((current) => ({
+                    ...current,
+                    [permsRole]: { ...current[permsRole], [p.label]: enabled },
+                  }))}
+                />
               </div>
             ))}
           </div>

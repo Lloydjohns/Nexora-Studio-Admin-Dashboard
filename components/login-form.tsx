@@ -133,9 +133,6 @@ export function LoginForm({
         ) : (
           <>
             <div className="mb-7">
-              <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
               <p className="text-sm font-medium text-primary">Nexora Studio</p>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">
                 {isSignUp ? 'Create your account' : 'Welcome back'}

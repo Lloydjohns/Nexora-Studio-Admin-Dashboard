@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,15 +74,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         <div className="flex h-20 items-center justify-between border-b border-[hsl(var(--sidebar-border))] px-4">
           <Link href="/" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
-            <div className="flex h-12 w-48 items-center rounded-lg bg-white px-2 shadow-sm ring-1 ring-black/5">
-              <Image
-                src="/images/companylogo.png"
-                alt="Nexora Studio"
-                width={180}
-                height={52}
-                className="h-auto w-full object-contain"
-                priority
-              />
+            <div className="flex h-12 w-48 items-center rounded-lg px-2">
+              <span className="text-sm font-semibold tracking-tight text-foreground">
+                Nexora Studio <span className="font-normal text-muted-foreground">x Branding and Design</span>
+              </span>
             </div>
           </Link>
           <Button
