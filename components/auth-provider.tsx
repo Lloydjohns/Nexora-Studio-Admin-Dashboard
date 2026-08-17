@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import type { Provider, Session, User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 import { supabase, supabaseConfigured } from '@/lib/supabase/client';
 
 interface SignUpResult {
@@ -22,8 +22,7 @@ interface AuthContextValue {
   /** Null unless the Supabase env vars are missing, in which case this explains it. */
   configError: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithOAuth: (provider: Provider, redirectTo: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<SignUpResult>;
+  signUp: (email: string, password: string, fullName: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
 }
 
@@ -37,7 +36,6 @@ const AuthContext = React.createContext<AuthContextValue>({
   loading: true,
   configError: null,
   signIn: async () => ({ error: 'Not initialized' }),
-  signInWithOAuth: async () => ({ error: 'Not initialized' }),
   signUp: async () => ({ error: 'Not initialized', needsEmailConfirmation: false }),
   signOut: async () => {},
 });
@@ -96,23 +94,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error?.message ?? null };
   }, []);
 
-  const signInWithOAuth = React.useCallback(async (provider: Provider, redirectTo: string) => {
-    if (!supabaseConfigured) return { error: CONFIG_ERROR };
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        // Cookie-based SSR auth uses PKCE, so the authorization code must be
-        // exchanged for a session in our server-side callback route.
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-      },
-    });
-
-    return { error: error?.message ?? null };
-  }, []);
-
   const signUp = React.useCallback(
-    async (email: string, password: string): Promise<SignUpResult> => {
+    async (email: string, password: string, fullName: string): Promise<SignUpResult> => {
       if (!supabaseConfigured) {
         return { error: CONFIG_ERROR, needsEmailConfirmation: false };
       }
@@ -123,6 +106,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           // Where the link in the confirmation email sends the user back to.
           emailRedirectTo: `${window.location.origin}/auth/confirm`,
+          // This is used only for display and personalization; authorization
+          // decisions must never rely on editable user metadata.
+          data: { full_name: fullName },
         },
       });
 
@@ -149,11 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       configError: supabaseConfigured ? null : CONFIG_ERROR,
       signIn,
-      signInWithOAuth,
       signUp,
       signOut,
     }),
-    [user, session, loading, signIn, signInWithOAuth, signUp, signOut],
+    [user, session, loading, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
