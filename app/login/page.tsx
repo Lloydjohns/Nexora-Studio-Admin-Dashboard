@@ -16,9 +16,11 @@ export default async function LoginPage({
   const first = (value: string | string[] | undefined) =>
     Array.isArray(value) ? value[0] : value;
 
+  const redirectTo = first(params.redirectTo);
+
   return (
     <LoginForm
-      redirectTo={first(params.redirectTo) ?? '/'}
+      redirectTo={redirectTo?.startsWith('/') && !redirectTo.startsWith('//') ? redirectTo : '/'}
       urlError={first(params.error) ?? null}
     />
   );
