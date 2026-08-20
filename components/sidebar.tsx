@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -72,12 +73,29 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-20 items-center justify-between border-b border-[hsl(var(--sidebar-border))] px-4">
-          <Link href="/" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
-            <div className="flex h-12 w-48 items-center rounded-lg px-2">
-              <span className="text-sm font-semibold tracking-tight text-foreground">
-                Nexora Studio <span className="font-normal text-muted-foreground">x Branding and Design</span>
-              </span>
+        <div className="flex h-20 items-center gap-2 border-b border-[hsl(var(--sidebar-border))] px-4">
+          <Link
+            href="/"
+            className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onClose}
+          >
+            <div className="flex min-w-0 items-center gap-3 rounded-lg py-2">
+              <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-muted/60 ring-1 ring-border/70">
+                <Image
+                  src="/images/companylogo.png"
+                  alt="Nexora Studio logo"
+                  width={931}
+                  height={268}
+                  preload
+                  className="absolute left-1/2 top-0 h-[74px] w-auto max-w-none -translate-x-1/2 -translate-y-1"
+                />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-[15px] font-semibold tracking-tight text-foreground">Nexora Studio</p>
+                <p className="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Branding &amp; Design
+                </p>
+              </div>
             </div>
           </Link>
           <Button
