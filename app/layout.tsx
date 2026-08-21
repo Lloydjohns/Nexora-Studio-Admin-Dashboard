@@ -15,11 +15,23 @@ export const metadata: Metadata = {
   description:
     'Internal business operating system for Nexora Studio: clients, projects, content, finance, and analytics.',
   icons: {
-    icon: '/nexoralogo.png',
-    shortcut: '/nexoralogo.png',
+    icon: [
+      {
+        url: '/nexoralogo.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: '/nexoralogo.png',
+        media: '(prefers-color-scheme: dark)',
+      },
+      {
+        url: '/nexoralogo.svg',
+        type: 'image/svg+xml',
+      },
+    ],
     apple: '/nexoralogo.png',
   },
-};
+}
 
 export default function RootLayout({
   children,
