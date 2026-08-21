@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   description:
     'Internal business operating system for Nexora Studio: clients, projects, content, finance, and analytics.',
   icons: {
-    icon: '/public/images/companylogo.png',
-    shortcut: '/public/images/companylogo.png',
-    apple: '/public/images/companylogo.png',
+    icon: '/public/images/nexoralogo.png',
+    shortcut: '/public/images/nexoralogo.png',
+    apple: '/public/images/nexoralogo.png',
   },
 };
 
