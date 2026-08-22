@@ -15,6 +15,225 @@ import type {
 } from './data';
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+function isValidDate(value: unknown): value is string {
+  if (!value || typeof value !== 'string') return false;
+
+  const date = new Date(value);
+
+  return !Number.isNaN(date.getTime());
+}
+
+/**
+ * Converts a database date + time into a single ISO date.
+ *
+ * discovery_bookings stores:
+ *   date -> YYYY-MM-DD
+ *   time -> HH:MM / HH:MM:SS / time string
+ *
+ * The dashboard expects:
+ *   date -> ISO string
+ */
+function combineBookingDateTime(
+  dateValue: unknown,
+  timeValue: unknown,
+): string {
+  if (!dateValue) {
+    return new Date().toISOString();
+  }
+
+  const date = String(dateValue).trim();
+
+  if (!timeValue) {
+    return isValidDate(date)
+      ? new Date(date).toISOString()
+      : date;
+  }
+
+  const time = String(timeValue).trim();
+
+  // PostgreSQL time values can arrive as:
+  // 09:00:00
+  // 09:00
+  // 09:00 AM
+  // 9:00 AM
+  const combined = `${date} ${time}`;
+
+  const parsed = new Date(combined);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+
+  // Fallback for ISO-compatible date/time formats.
+  const fallback = new Date(`${date}T${time}`);
+
+  if (!Number.isNaN(fallback.getTime())) {
+    return fallback.toISOString();
+  }
+
+  return combined;
+}
+
+/**
+ * Converts dashboard status into database status.
+ */
+function normalizeBookingStatus(status: unknown): string {
+  switch (String(status ?? '').trim().toLowerCase()) {
+    case 'completed':
+      return 'completed';
+
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+
+    case 'scheduled':
+      return 'pending';
+
+    case 'pending':
+      return 'pending';
+
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * Converts database status into dashboard status.
+ */
+function mapBookingStatus(status: unknown): string {
+  switch (String(status ?? '').trim().toLowerCase()) {
+    case 'completed':
+      return 'Completed';
+
+    case 'cancelled':
+    case 'canceled':
+      return 'Cancelled';
+
+    case 'scheduled':
+    case 'pending':
+    default:
+      return 'Scheduled';
+  }
+}
+
+/**
+ * Converts dashboard payment status into database status.
+ */
+function normalizePaymentStatus(
+  paymentStatus: unknown,
+): string {
+  switch (
+    String(paymentStatus ?? '')
+      .trim()
+      .toLowerCase()
+  ) {
+    case 'paid':
+      return 'paid';
+
+    case 'free':
+      return 'free';
+
+    case 'pending':
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * Converts database payment status into dashboard status.
+ */
+function mapPaymentStatus(
+  paymentStatus: unknown,
+  servicePrice: unknown,
+): string {
+  const value = String(
+    paymentStatus ?? '',
+  )
+    .trim()
+    .toLowerCase();
+
+  if (value === 'paid') {
+    return 'Paid';
+  }
+
+  if (value === 'free') {
+    return 'Free';
+  }
+
+  if (Number(servicePrice ?? 0) === 0) {
+    return 'Free';
+  }
+
+  return 'Pending';
+}
+
+/**
+ * Get duration from selected service.
+ */
+function getBookingDuration(r: any): number {
+  if (
+    r?.duration !== null &&
+    r?.duration !== undefined &&
+    r?.duration !== ''
+  ) {
+    const numericDuration = Number(r.duration);
+
+    if (!Number.isNaN(numericDuration)) {
+      return numericDuration;
+    }
+  }
+
+  switch (r?.service_id) {
+    case 'social-growth':
+      return 30;
+
+    case 'brand-clarity':
+      return 45;
+
+    case 'website-roadmap':
+      return 60;
+
+    default:
+      return 30;
+  }
+}
+
+/**
+ * Get service information from the dashboard call type.
+ */
+function getServiceDetails(type: string) {
+  switch (type) {
+    case 'Brand Clarity Session':
+      return {
+        serviceId: 'brand-clarity',
+        serviceName: 'Brand Clarity Session',
+        servicePrice: 500,
+        duration: 45,
+      };
+
+    case 'Website Roadmap Call':
+      return {
+        serviceId: 'website-roadmap',
+        serviceName: 'Website Roadmap Call',
+        servicePrice: 800,
+        duration: 60,
+      };
+
+    case 'Social Growth Sprint':
+    default:
+      return {
+        serviceId: 'social-growth',
+        serviceName: 'Social Growth Sprint',
+        servicePrice: 300,
+        duration: 30,
+      };
+  }
+}
+
+// ============================================================
 // ROW MAPPERS
 // ============================================================
 
@@ -54,106 +273,49 @@ function mapLead(r: any): Lead {
 }
 
 /**
- * Converts discovery_bookings into the DiscoveryCall
- * structure used by the admin dashboard.
+ * Converts discovery_bookings into the
+ * DiscoveryCall structure used by the dashboard.
  */
 function mapDiscoveryBooking(r: any): DiscoveryCall {
-  let combinedDate = '';
+  const combinedDate = combineBookingDateTime(
+    r.date,
+    r.time,
+  );
 
-  if (r.date && r.time) {
-    const parsed = new Date(`${r.date} ${r.time}`);
+  const status = mapBookingStatus(
+    r.status,
+  );
 
-    if (!Number.isNaN(parsed.getTime())) {
-      combinedDate = parsed.toISOString();
-    } else {
-      combinedDate = `${r.date} ${r.time}`;
-    }
-  } else if (r.date) {
-    combinedDate = r.date;
-  } else {
-    combinedDate = new Date().toISOString();
-  }
-
-  // Convert public booking status to admin status
-  let status = 'Scheduled';
-
-  switch (String(r.status ?? '').toLowerCase()) {
-    case 'completed':
-      status = 'Completed';
-      break;
-
-    case 'cancelled':
-    case 'canceled':
-      status = 'Cancelled';
-      break;
-
-    case 'scheduled':
-      status = 'Scheduled';
-      break;
-
-    case 'pending':
-    default:
-      status = 'Scheduled';
-      break;
-  }
-
-  // Payment status
-  let paymentStatus = 'Pending';
-
-  if (Number(r.service_price ?? 0) === 0) {
-    paymentStatus = 'Free';
-  }
-
-  if (
-    String(r.payment_status ?? '').toLowerCase() === 'paid'
-  ) {
-    paymentStatus = 'Paid';
-  }
-
-  if (
-    String(r.payment_status ?? '').toLowerCase() === 'free'
-  ) {
-    paymentStatus = 'Free';
-  }
+  const paymentStatus = mapPaymentStatus(
+    r.payment_status,
+    r.service_price,
+  );
 
   return {
     id: String(r.id),
+
     clientName: r.name ?? '',
-    type: r.service_name ?? 'Social Growth Sprint',
-    duration: getBookingDuration(r),
+
+    type:
+      r.service_name ??
+      'Social Growth Sprint',
+
+    duration:
+      getBookingDuration(r),
+
     date: combinedDate,
+
     status: status as any,
-    paymentStatus: paymentStatus as any,
-    notes: r.notes ?? '',
-    outcome: r.outcome ?? '',
+
+    paymentStatus:
+      paymentStatus as any,
+
+    notes:
+      r.notes ?? '',
+
+    outcome:
+      r.outcome ?? '',
   };
-}
-
-/**
- * Get duration from the selected service.
- */
-function getBookingDuration(r: any): number {
-  if (r.duration) {
-    const numericDuration = Number(r.duration);
-
-    if (!Number.isNaN(numericDuration)) {
-      return numericDuration;
-    }
-  }
-
-  switch (r.service_id) {
-    case 'social-growth':
-      return 30;
-
-    case 'brand-clarity':
-      return 45;
-
-    case 'website-roadmap':
-      return 60;
-
-    default:
-      return 30;
-  }
 }
 
 function mapProject(r: any): Project {
@@ -181,7 +343,8 @@ function mapContentItem(r: any): ContentItem {
     copywriter: r.copywriter,
     client: r.client,
     reach: r.reach ?? undefined,
-    engagement: r.engagement ?? undefined,
+    engagement:
+      r.engagement ?? undefined,
     saves: r.saves ?? undefined,
     shares: r.shares ?? undefined,
   };
@@ -215,34 +378,47 @@ function mapOrder(r: any): Order {
   };
 }
 
-function mapWebsiteRequest(r: any): WebsiteRequest {
+function mapWebsiteRequest(
+  r: any,
+): WebsiteRequest {
   return {
     id: r.id,
     business: r.business,
     businessType: r.business_type,
     goals: r.goals ?? '',
-    pagesRequested: r.pages_requested ?? [],
-    featuresRequested: r.features_requested ?? [],
+    pagesRequested:
+      r.pages_requested ?? [],
+    featuresRequested:
+      r.features_requested ?? [],
     budget: r.budget,
     timeline: r.timeline,
-    proposalStatus: r.proposal_status,
-    developmentStatus: r.development_status,
+    proposalStatus:
+      r.proposal_status,
+    developmentStatus:
+      r.development_status,
     date: r.date,
   };
 }
 
-function mapTeamMember(r: any): TeamMember {
+function mapTeamMember(
+  r: any,
+): TeamMember {
   return {
     id: r.id,
     name: r.name,
     role: r.role,
     avatar: r.avatar,
     email: r.email,
-    activeProjects: r.active_projects,
-    tasksAssigned: r.tasks_assigned,
-    tasksCompleted: r.tasks_completed,
-    availability: r.availability,
-    utilization: r.utilization,
+    activeProjects:
+      r.active_projects,
+    tasksAssigned:
+      r.tasks_assigned,
+    tasksCompleted:
+      r.tasks_completed,
+    availability:
+      r.availability,
+    utilization:
+      r.utilization,
   };
 }
 
@@ -259,33 +435,43 @@ function mapInvoice(r: any): Invoice {
 }
 
 // ============================================================
-// FETCH FUNCTIONS
+// CLIENTS
 // ============================================================
 
 export async function fetchClients(): Promise<Client[]> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.clients);
+    return Promise.resolve(
+      sample.clients,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
   return (data ?? []).map(mapClient);
 }
 
+// ============================================================
+// LEADS
+// ============================================================
+
 export async function fetchLeads(): Promise<Lead[]> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.leads);
+    return Promise.resolve(
+      sample.leads,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('leads')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
@@ -299,213 +485,329 @@ export async function fetchLeads(): Promise<Lead[]> {
 /**
  * IMPORTANT:
  *
- * The public website saves bookings into:
+ * The Discovery Calls dashboard uses:
  *
- * discovery_bookings
+ * public.discovery_bookings
  *
- * Therefore the admin dashboard must also read from:
- *
- * discovery_bookings
+ * Do NOT use discovery_calls here.
  */
-export async function fetchDiscoveryCalls(): Promise<DiscoveryCall[]> {
+export async function fetchDiscoveryCalls(): Promise<
+  DiscoveryCall[]
+> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.discoveryCalls);
+    return Promise.resolve(
+      sample.discoveryCalls,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { data, error } =
+    await supabase
+      .from('discovery_bookings')
+      .select('*')
+      .order('created_at', {
+        ascending: false,
+      });
 
   if (error) {
-    console.error('Failed to fetch discovery bookings:', error);
+    console.error(
+      'Failed to fetch discovery bookings:',
+      error,
+    );
+
     throw error;
   }
 
-  return (data ?? []).map(mapDiscoveryBooking);
+  return (data ?? []).map(
+    mapDiscoveryBooking,
+  );
 }
 
 /**
- * Admin manually creates a booking.
- *
- * This now writes to discovery_bookings instead of discovery_calls.
+ * Admin creates a new discovery booking.
  */
-export async function insertDiscoveryCall(payload: {
-  client_name: string;
-  type: string;
-  duration: number;
-  date: string;
-  status: string;
-  payment_status: string;
-  notes: string;
-  outcome: string;
-}) {
-  const parsedDate = new Date(payload.date);
+export async function insertDiscoveryCall(
+  payload: {
+    client_name: string;
+    type: string;
+    duration: number;
+    date: string;
+    status: string;
+    payment_status: string;
+    notes: string;
+    outcome: string;
+  },
+): Promise<DiscoveryCall> {
+  const service =
+    getServiceDetails(payload.type);
 
-  const dateValue = Number.isNaN(parsedDate.getTime())
-    ? new Date().toISOString().split('T')[0]
-    : parsedDate.toISOString().split('T')[0];
+  const parsedDate = new Date(
+    payload.date,
+  );
 
-  const timeValue = Number.isNaN(parsedDate.getTime())
-    ? '09:00 AM'
-    : parsedDate.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+  let dateValue: string;
+  let timeValue: string;
 
-  const serviceId =
-    payload.type === 'Brand Clarity Session'
-      ? 'brand-clarity'
-      : payload.type === 'Website Roadmap Call'
-        ? 'website-roadmap'
-        : 'social-growth';
+  if (
+    !Number.isNaN(
+      parsedDate.getTime(),
+    )
+  ) {
+    dateValue =
+      parsedDate
+        .toISOString()
+        .split('T')[0];
 
-  const servicePrice =
-    payload.type === 'Brand Clarity Session'
-      ? 500
-      : payload.type === 'Website Roadmap Call'
-        ? 800
-        : 300;
+    /*
+     * Store a PostgreSQL-friendly time.
+     *
+     * Example:
+     * 09:30:00
+     */
+    timeValue =
+      parsedDate.toTimeString()
+        .split(' ')[0];
+  } else {
+    const now = new Date();
+
+    dateValue =
+      now
+        .toISOString()
+        .split('T')[0];
+
+    timeValue = '09:00:00';
+  }
 
   const bookingStatus =
-    payload.status === 'Completed'
-      ? 'completed'
-      : payload.status === 'Cancelled'
-        ? 'cancelled'
-        : 'pending';
+    normalizeBookingStatus(
+      payload.status,
+    );
 
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .insert({
-      service_id: serviceId,
-      service_name: payload.type,
-      service_price: servicePrice,
+  const paymentStatus =
+    normalizePaymentStatus(
+      payload.payment_status,
+    );
 
-      date: dateValue,
-      time: timeValue,
+  const insertPayload = {
+    service_id:
+      service.serviceId,
 
-      name: payload.client_name,
+    service_name:
+      service.serviceName,
 
-      email: '',
+    service_price:
+      service.servicePrice,
 
-      phone: null,
-      company: null,
-      website: null,
+    date: dateValue,
 
-      contact_method: 'Video call',
+    time: timeValue,
 
-      budget: 'Not specified',
-      timeline: 'Not specified',
+    name:
+      payload.client_name.trim(),
 
-      goals: [],
+    email: '',
 
-      notes: payload.notes || null,
+    phone: null,
 
-      status: bookingStatus,
+    company: null,
 
-      payment_status:
-        payload.payment_status === 'Paid'
-          ? 'paid'
-          : payload.payment_status === 'Free'
-            ? 'free'
-            : 'pending',
+    website: null,
 
-      outcome: payload.outcome || null,
-    })
-    .select()
-    .single();
+    contact_method:
+      'Video call',
+
+    budget:
+      'Not specified',
+
+    timeline:
+      'Not specified',
+
+    goals: [],
+
+    notes:
+      payload.notes?.trim() || null,
+
+    status:
+      bookingStatus,
+
+    payment_status:
+      paymentStatus,
+
+    outcome:
+      payload.outcome?.trim() || null,
+  };
+
+  console.log(
+    'Creating discovery booking:',
+    insertPayload,
+  );
+
+  const { data, error } =
+    await supabase
+      .from('discovery_bookings')
+      .insert(insertPayload)
+      .select('*')
+      .single();
 
   if (error) {
-    console.error('Failed to insert discovery booking:', error);
+    console.error(
+      'Failed to insert discovery booking:',
+      error,
+    );
+
     throw error;
   }
 
   return mapDiscoveryBooking(data);
 }
 
+/**
+ * Update a discovery booking.
+ *
+ * Supported fields:
+ * - status
+ * - notes
+ * - outcome
+ * - payment_status
+ */
 export async function updateDiscoveryCall(
   id: string,
   payload: Record<string, unknown>,
-) {
-  const updatePayload: Record<string, unknown> = {};
+): Promise<DiscoveryCall> {
+  const updatePayload: Record<
+    string,
+    unknown
+  > = {};
 
   if ('status' in payload) {
-    const status = String(payload.status);
-
     updatePayload.status =
-      status === 'Completed'
-        ? 'completed'
-        : status === 'Cancelled'
-          ? 'cancelled'
-          : 'pending';
+      normalizeBookingStatus(
+        payload.status,
+      );
   }
 
   if ('notes' in payload) {
-    updatePayload.notes = payload.notes;
+    updatePayload.notes =
+      payload.notes || null;
   }
 
   if ('outcome' in payload) {
-    updatePayload.outcome = payload.outcome;
+    updatePayload.outcome =
+      payload.outcome || null;
   }
 
-  if ('payment_status' in payload) {
-    updatePayload.payment_status = payload.payment_status;
+  if (
+    'payment_status' in
+    payload
+  ) {
+    updatePayload.payment_status =
+      normalizePaymentStatus(
+        payload.payment_status,
+      );
   }
 
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .update(updatePayload)
-    .eq('id', id)
-    .select()
-    .single();
+  if (
+    Object.keys(updatePayload)
+      .length === 0
+  ) {
+    throw new Error(
+      'No valid fields were provided for update.',
+    );
+  }
+
+  console.log(
+    'Updating discovery booking:',
+    id,
+    updatePayload,
+  );
+
+  const { data, error } =
+    await supabase
+      .from('discovery_bookings')
+      .update(updatePayload)
+      .eq('id', id)
+      .select('*')
+      .single();
 
   if (error) {
-    console.error('Failed to update discovery booking:', error);
+    console.error(
+      'Failed to update discovery booking:',
+      error,
+    );
+
     throw error;
   }
 
   return mapDiscoveryBooking(data);
 }
 
-export async function deleteDiscoveryCall(id: string) {
-  const { error } = await supabase
-    .from('discovery_bookings')
-    .delete()
-    .eq('id', id);
+/**
+ * Delete a discovery booking.
+ */
+export async function deleteDiscoveryCall(
+  id: string,
+): Promise<void> {
+  const { error } =
+    await supabase
+      .from('discovery_bookings')
+      .delete()
+      .eq('id', id);
 
   if (error) {
-    console.error('Failed to delete discovery booking:', error);
+    console.error(
+      'Failed to delete discovery booking:',
+      error,
+    );
+
     throw error;
   }
 }
 
 // ============================================================
-// OTHER DISCOVERY CALLS LEGACY FUNCTION
+// LEGACY DISCOVERY CALLS
 // ============================================================
 
-export async function fetchLegacyDiscoveryCalls(): Promise<DiscoveryCall[]> {
+/**
+ * Kept only for backwards compatibility.
+ *
+ * The Discovery Calls page should NOT use this function.
+ */
+export async function fetchLegacyDiscoveryCalls(): Promise<
+  DiscoveryCall[]
+> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.discoveryCalls);
+    return Promise.resolve(
+      sample.discoveryCalls,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('discovery_calls')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('discovery_calls')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    clientName: r.client_name,
-    type: r.type,
-    duration: r.duration,
-    date: r.date,
-    status: r.status,
-    paymentStatus: r.payment_status,
-    notes: r.notes ?? '',
-    outcome: r.outcome ?? '',
-  }));
+  return (data ?? []).map(
+    (r) => ({
+      id: String(r.id),
+      clientName:
+        r.client_name ?? '',
+      type:
+        r.type ??
+        'Social Growth Sprint',
+      duration:
+        Number(r.duration) || 30,
+      date: r.date,
+      status: r.status,
+      paymentStatus:
+        r.payment_status,
+      notes:
+        r.notes ?? '',
+      outcome:
+        r.outcome ?? '',
+    }),
+  );
 }
 
 // ============================================================
@@ -514,55 +816,232 @@ export async function fetchLegacyDiscoveryCalls(): Promise<DiscoveryCall[]> {
 
 export async function fetchProjects(): Promise<Project[]> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.projects);
+    return Promise.resolve(
+      sample.projects,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapProject);
+  return (data ?? []).map(
+    mapProject,
+  );
+}
+
+export async function insertProject(
+  payload: {
+    name: string;
+    client: string;
+    service_type: string;
+    stage: string;
+    progress: number;
+    deadline: string;
+    team: string[];
+    priority: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('projects')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapProject(data);
+}
+
+export async function updateProject(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('projects')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapProject(data);
+}
+
+export async function deleteProject(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
 // CONTENT
 // ============================================================
 
-export async function fetchContentItems(): Promise<ContentItem[]> {
+export async function fetchContentItems(): Promise<
+  ContentItem[]
+> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.contentItems);
+    return Promise.resolve(
+      sample.contentItems,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('content_items')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('content_items')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapContentItem);
+  return (data ?? []).map(
+    mapContentItem,
+  );
+}
+
+export async function insertContentItem(
+  payload: {
+    platform: string;
+    caption: string;
+    status: string;
+    scheduled_date: string;
+    designer: string;
+    copywriter: string;
+    client: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('content_items')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapContentItem(data);
+}
+
+export async function updateContentItem(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('content_items')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapContentItem(data);
+}
+
+export async function deleteContentItem(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('content_items')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
 // PRODUCTS
 // ============================================================
 
-export async function fetchProducts(): Promise<DigitalProduct[]> {
+export async function fetchProducts(): Promise<
+  DigitalProduct[]
+> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.digitalProducts);
+    return Promise.resolve(
+      sample.digitalProducts,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('digital_products')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('digital_products')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapProduct);
+  return (data ?? []).map(
+    mapProduct,
+  );
+}
+
+export async function insertProduct(
+  payload: {
+    name: string;
+    category: string;
+    price: number;
+    sku: string;
+    status: string;
+    sales: number;
+    revenue: number;
+    downloads: number;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('digital_products')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapProduct(data);
+}
+
+export async function updateProduct(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('digital_products')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapProduct(data);
+}
+
+export async function deleteProduct(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('digital_products')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
@@ -571,74 +1050,304 @@ export async function fetchProducts(): Promise<DigitalProduct[]> {
 
 export async function fetchOrders(): Promise<Order[]> {
   if (!supabaseConfigured) {
-    return Promise.resolve(sample.orders);
+    return Promise.resolve(
+      sample.orders,
+    );
   }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapOrder);
+  return (data ?? []).map(
+    mapOrder,
+  );
+}
+
+export async function insertOrder(
+  payload: {
+    customer: string;
+    product: string;
+    amount: number;
+    payment_method: string;
+    status: string;
+    download_sent: boolean;
+    date: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('orders')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapOrder(data);
+}
+
+export async function updateOrder(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('orders')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapOrder(data);
+}
+
+export async function deleteOrder(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('orders')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
 // WEBSITE REQUESTS
 // ============================================================
 
-export async function fetchWebsiteRequests(): Promise<WebsiteRequest[]> {
+export async function fetchWebsiteRequests(): Promise<
+  WebsiteRequest[]
+> {
   if (!supabaseConfigured) {
     return Promise.resolve([]);
   }
 
-  const { data, error } = await supabase
-    .from('website_requests')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('website_requests')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapWebsiteRequest);
+  return (data ?? []).map(
+    mapWebsiteRequest,
+  );
+}
+
+export async function insertWebsiteRequest(
+  payload: {
+    business: string;
+    business_type: string;
+    goals: string;
+    pages_requested: string[];
+    features_requested: string[];
+    budget: string;
+    timeline: string;
+    proposal_status: string;
+    development_status: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('website_requests')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapWebsiteRequest(data);
+}
+
+export async function updateWebsiteRequest(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('website_requests')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapWebsiteRequest(data);
+}
+
+export async function deleteWebsiteRequest(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('website_requests')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
 // TEAM
 // ============================================================
 
-export async function fetchTeam(): Promise<TeamMember[]> {
+export async function fetchTeam(): Promise<
+  TeamMember[]
+> {
   if (!supabaseConfigured) {
     return Promise.resolve([]);
   }
 
-  const { data, error } = await supabase
-    .from('team_members')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('team_members')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapTeamMember);
+  return (data ?? []).map(
+    mapTeamMember,
+  );
+}
+
+export async function insertTeamMember(
+  payload: {
+    name: string;
+    role: string;
+    email: string;
+    active_projects: number;
+    tasks_assigned: number;
+    tasks_completed: number;
+    availability: string;
+    utilization: number;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('team_members')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapTeamMember(data);
+}
+
+export async function updateTeamMember(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('team_members')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapTeamMember(data);
+}
+
+export async function deleteTeamMember(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('team_members')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
 // INVOICES
 // ============================================================
 
-export async function fetchInvoices(): Promise<Invoice[]> {
+export async function fetchInvoices(): Promise<
+  Invoice[]
+> {
   if (!supabaseConfigured) {
     return Promise.resolve([]);
   }
 
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('invoices')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
-  return (data ?? []).map(mapInvoice);
+  return (data ?? []).map(
+    mapInvoice,
+  );
+}
+
+export async function insertInvoice(
+  payload: {
+    client: string;
+    amount: number;
+    status: string;
+    due_date: string;
+    issued_date: string;
+    service: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('invoices')
+      .insert(payload)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapInvoice(data);
+}
+
+export async function updateInvoice(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const { data, error } =
+    await supabase
+      .from('invoices')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+  if (error) throw error;
+
+  return mapInvoice(data);
+}
+
+export async function deleteInvoice(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', id);
+
+  if (error) throw error;
 }
 
 // ============================================================
@@ -679,65 +1388,96 @@ export interface CallBooking {
   calls: number;
 }
 
-export async function fetchActivities(): Promise<Activity[]> {
-  if (!supabaseConfigured) return [];
+export async function fetchActivities(): Promise<
+  Activity[]
+> {
+  if (!supabaseConfigured) {
+    return [];
+  }
 
-  const { data, error } = await supabase
-    .from('activities')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('activities')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
   return (data ?? []) as Activity[];
 }
 
-export async function fetchNotifications(): Promise<Notification[]> {
-  if (!supabaseConfigured) return [];
+export async function fetchNotifications(): Promise<
+  Notification[]
+> {
+  if (!supabaseConfigured) {
+    return [];
+  }
 
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .order('created_at');
+  const { data, error } =
+    await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at');
 
   if (error) throw error;
 
   return (data ?? []) as Notification[];
 }
 
-export async function fetchMonthlyRevenue(): Promise<MonthlyRevenue[]> {
-  if (!supabaseConfigured) return [];
+export async function fetchMonthlyRevenue(): Promise<
+  MonthlyRevenue[]
+> {
+  if (!supabaseConfigured) {
+    return [];
+  }
 
-  const { data, error } = await supabase
-    .from('monthly_revenue')
-    .select('month, revenue, expenses, profit')
-    .order('id');
+  const { data, error } =
+    await supabase
+      .from('monthly_revenue')
+      .select(
+        'month, revenue, expenses, profit',
+      )
+      .order('id');
 
   if (error) throw error;
 
   return (data ?? []) as MonthlyRevenue[];
 }
 
-export async function fetchProductSales(): Promise<ProductSale[]> {
-  if (!supabaseConfigured) return [];
+export async function fetchProductSales(): Promise<
+  ProductSale[]
+> {
+  if (!supabaseConfigured) {
+    return [];
+  }
 
-  const { data, error } = await supabase
-    .from('product_sales')
-    .select('month, sales, revenue')
-    .order('id');
+  const { data, error } =
+    await supabase
+      .from('product_sales')
+      .select(
+        'month, sales, revenue',
+      )
+      .order('id');
 
   if (error) throw error;
 
   return (data ?? []) as ProductSale[];
 }
 
-export async function fetchCallBookings(): Promise<CallBooking[]> {
-  if (!supabaseConfigured) return [];
+export async function fetchCallBookings(): Promise<
+  CallBooking[]
+> {
+  if (!supabaseConfigured) {
+    return [];
+  }
 
-  const { data, error } = await supabase
-    .from('call_bookings')
-    .select('week, calls')
-    .order('id');
+  const { data, error } =
+    await supabase
+      .from('call_bookings')
+      .select(
+        'week, calls',
+      )
+      .order('id');
 
   if (error) throw error;
 
@@ -748,23 +1488,26 @@ export async function fetchCallBookings(): Promise<CallBooking[]> {
 // CLIENT MUTATIONS
 // ============================================================
 
-export async function insertClient(payload: {
-  name: string;
-  company: string;
-  email: string;
-  phone: string;
-  service_package: string;
-  status: string;
-  monthly_retainer: number;
-  account_manager: string;
-  industry: string;
-  start_date: string;
-}) {
-  const { data, error } = await supabase
-    .from('clients')
-    .insert(payload)
-    .select()
-    .single();
+export async function insertClient(
+  payload: {
+    name: string;
+    company: string;
+    email: string;
+    phone: string;
+    service_package: string;
+    status: string;
+    monthly_retainer: number;
+    account_manager: string;
+    industry: string;
+    start_date: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('clients')
+      .insert(payload)
+      .select()
+      .single();
 
   if (error) throw error;
 
@@ -775,23 +1518,27 @@ export async function updateClient(
   id: string,
   payload: Record<string, unknown>,
 ) {
-  const { data, error } = await supabase
-    .from('clients')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
+  const { data, error } =
+    await supabase
+      .from('clients')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
 
   if (error) throw error;
 
   return mapClient(data);
 }
 
-export async function deleteClient(id: string) {
-  const { error } = await supabase
-    .from('clients')
-    .delete()
-    .eq('id', id);
+export async function deleteClient(
+  id: string,
+) {
+  const { error } =
+    await supabase
+      .from('clients')
+      .delete()
+      .eq('id', id);
 
   if (error) throw error;
 }
@@ -800,21 +1547,24 @@ export async function deleteClient(id: string) {
 // LEAD MUTATIONS
 // ============================================================
 
-export async function insertLead(payload: {
-  name: string;
-  email: string;
-  business: string;
-  budget_range: string;
-  interested_service: string;
-  message: string;
-  source: string;
-  status: string;
-}) {
-  const { data, error } = await supabase
-    .from('leads')
-    .insert(payload)
-    .select()
-    .single();
+export async function insertLead(
+  payload: {
+    name: string;
+    email: string;
+    business: string;
+    budget_range: string;
+    interested_service: string;
+    message: string;
+    source: string;
+    status: string;
+  },
+) {
+  const { data, error } =
+    await supabase
+      .from('leads')
+      .insert(payload)
+      .select()
+      .single();
 
   if (error) throw error;
 
@@ -825,370 +1575,27 @@ export async function updateLead(
   id: string,
   payload: Record<string, unknown>,
 ) {
-  const { data, error } = await supabase
-    .from('leads')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
+  const { data, error } =
+    await supabase
+      .from('leads')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
 
   if (error) throw error;
 
   return mapLead(data);
 }
 
-export async function deleteLead(id: string) {
-  const { error } = await supabase
-    .from('leads')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// PROJECT MUTATIONS
-// ============================================================
-
-export async function insertProject(payload: {
-  name: string;
-  client: string;
-  service_type: string;
-  stage: string;
-  progress: number;
-  deadline: string;
-  team: string[];
-  priority: string;
-}) {
-  const { data, error } = await supabase
-    .from('projects')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapProject(data);
-}
-
-export async function updateProject(
+export async function deleteLead(
   id: string,
-  payload: Record<string, unknown>,
 ) {
-  const { data, error } = await supabase
-    .from('projects')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapProject(data);
-}
-
-export async function deleteProject(id: string) {
-  const { error } = await supabase
-    .from('projects')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// INVOICE MUTATIONS
-// ============================================================
-
-export async function insertInvoice(payload: {
-  client: string;
-  amount: number;
-  status: string;
-  due_date: string;
-  issued_date: string;
-  service: string;
-}) {
-  const { data, error } = await supabase
-    .from('invoices')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapInvoice(data);
-}
-
-export async function updateInvoice(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('invoices')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapInvoice(data);
-}
-
-export async function deleteInvoice(id: string) {
-  const { error } = await supabase
-    .from('invoices')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// ORDER MUTATIONS
-// ============================================================
-
-export async function insertOrder(payload: {
-  customer: string;
-  product: string;
-  amount: number;
-  payment_method: string;
-  status: string;
-  download_sent: boolean;
-  date: string;
-}) {
-  const { data, error } = await supabase
-    .from('orders')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapOrder(data);
-}
-
-export async function updateOrder(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('orders')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapOrder(data);
-}
-
-export async function deleteOrder(id: string) {
-  const { error } = await supabase
-    .from('orders')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// PRODUCT MUTATIONS
-// ============================================================
-
-export async function insertProduct(payload: {
-  name: string;
-  category: string;
-  price: number;
-  sku: string;
-  status: string;
-  sales: number;
-  revenue: number;
-  downloads: number;
-}) {
-  const { data, error } = await supabase
-    .from('digital_products')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapProduct(data);
-}
-
-export async function updateProduct(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('digital_products')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapProduct(data);
-}
-
-export async function deleteProduct(id: string) {
-  const { error } = await supabase
-    .from('digital_products')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// CONTENT MUTATIONS
-// ============================================================
-
-export async function insertContentItem(payload: {
-  platform: string;
-  caption: string;
-  status: string;
-  scheduled_date: string;
-  designer: string;
-  copywriter: string;
-  client: string;
-}) {
-  const { data, error } = await supabase
-    .from('content_items')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapContentItem(data);
-}
-
-export async function updateContentItem(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('content_items')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapContentItem(data);
-}
-
-export async function deleteContentItem(id: string) {
-  const { error } = await supabase
-    .from('content_items')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// WEBSITE REQUEST MUTATIONS
-// ============================================================
-
-export async function insertWebsiteRequest(payload: {
-  business: string;
-  business_type: string;
-  goals: string;
-  pages_requested: string[];
-  features_requested: string[];
-  budget: string;
-  timeline: string;
-  proposal_status: string;
-  development_status: string;
-}) {
-  const { data, error } = await supabase
-    .from('website_requests')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapWebsiteRequest(data);
-}
-
-export async function updateWebsiteRequest(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('website_requests')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapWebsiteRequest(data);
-}
-
-export async function deleteWebsiteRequest(id: string) {
-  const { error } = await supabase
-    .from('website_requests')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
-// TEAM MUTATIONS
-// ============================================================
-
-export async function insertTeamMember(payload: {
-  name: string;
-  role: string;
-  email: string;
-  active_projects: number;
-  tasks_assigned: number;
-  tasks_completed: number;
-  availability: string;
-  utilization: number;
-}) {
-  const { data, error } = await supabase
-    .from('team_members')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapTeamMember(data);
-}
-
-export async function updateTeamMember(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('team_members')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapTeamMember(data);
-}
-
-export async function deleteTeamMember(id: string) {
-  const { error } = await supabase
-    .from('team_members')
-    .delete()
-    .eq('id', id);
+  const { error } =
+    await supabase
+      .from('leads')
+      .delete()
+      .eq('id', id);
 
   if (error) throw error;
 }
