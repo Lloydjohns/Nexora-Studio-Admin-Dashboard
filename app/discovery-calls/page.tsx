@@ -1,9 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { motion } from 'framer-motion';
 
 import {
+  Plus,
   PhoneCall,
   Clock,
   Calendar,
@@ -13,16 +13,19 @@ import {
   TrendingUp,
   DollarSign,
   Trash2,
-  Mail,
-  Phone,
-  Building2,
-  Globe,
-  Target,
-  MessageSquare,
 } from 'lucide-react';
 
-import { DashboardShell, PageHeader } from '@/components/dashboard-shell';
-import { KpiCard, StatusBadge } from '@/components/shared';
+import { motion } from 'framer-motion';
+
+import {
+  DashboardShell,
+  PageHeader,
+} from '@/components/dashboard-shell';
+
+import {
+  KpiCard,
+  StatusBadge,
+} from '@/components/shared';
 
 import {
   Card,
@@ -32,6 +35,7 @@ import {
 } from '@/components/ui/card';
 
 import { Button } from '@/components/ui/button';
+
 import { Badge } from '@/components/ui/badge';
 
 import {
@@ -49,8 +53,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+
 import { Label } from '@/components/ui/label';
+
+import { Textarea } from '@/components/ui/textarea';
 
 import {
   Select,
@@ -61,322 +68,303 @@ import {
 } from '@/components/ui/select';
 
 import {
-  fetchDiscoveryBookings,
-  updateDiscoveryBooking,
-  deleteDiscoveryBooking,
-  type DiscoveryBooking,
+  fetchDiscoveryCalls,
+  insertDiscoveryCall,
+  updateDiscoveryCall,
+  deleteDiscoveryCall,
 } from '@/lib/api';
 
+import {
+  type CallType,
+  type DiscoveryCall,
+} from '@/lib/data';
+
 import { useFetch } from '@/hooks/use-fetch';
+
 import { toast } from 'sonner';
+
 import { cn } from '@/lib/utils';
 
 // ============================================================
-// TYPES
+// CALL TYPES
 // ============================================================
 
-type BookingStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'completed'
-  | 'cancelled';
+const callTypeMeta: Record<
+  CallType,
+  {
+    duration: string;
+    color: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }
+> = {
+  'Social Growth Sprint': {
+    duration: '30 min',
+    color: 'from-blue-500 to-indigo-500',
+    icon: TrendingUp,
+  },
 
-const statusOptions: BookingStatus[] = [
-  'pending',
-  'confirmed',
-  'completed',
-  'cancelled',
+  'Brand Clarity Session': {
+    duration: '45 min',
+    color: 'from-violet-500 to-purple-500',
+    icon: PhoneCall,
+  },
+
+  'Website Roadmap Call': {
+    duration: '60 min',
+    color: 'from-emerald-500 to-teal-500',
+    icon: Video,
+  },
+};
+
+const callTypes: CallType[] = [
+  'Social Growth Sprint',
+  'Brand Clarity Session',
+  'Website Roadmap Call',
 ];
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-function formatStatus(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'Pending';
-
-    case 'confirmed':
-      return 'Confirmed';
-
-    case 'completed':
-      return 'Completed';
-
-    case 'cancelled':
-      return 'Cancelled';
-
-    default:
-      return status;
-  }
-}
-
-function getDuration(serviceName: string): string {
-  switch (serviceName) {
-    case 'Social Growth Sprint':
-      return '30 min';
-
-    case 'Brand Clarity Session':
-      return '45 min';
-
-    case 'Website Roadmap Call':
-      return '60 min';
-
-    default:
-      return 'Discovery Call';
-  }
-}
-
-function formatBookingDate(date: string, time: string) {
-  if (!date) return 'No date';
-
-  const combined = `${date}T${convertTimeTo24Hour(time)}`;
-
-  const parsed = new Date(combined);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return date;
-  }
-
-  return parsed.toLocaleDateString('en-PH', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatBookingTime(time: string) {
-  if (!time) return 'No time';
-
-  return time;
-}
-
-function convertTimeTo24Hour(time: string): string {
-  if (!time) {
-    return '00:00';
-  }
-
-  // Already HH:mm
-  if (/^\d{2}:\d{2}$/.test(time)) {
-    return time;
-  }
-
-  const match = time.match(
-    /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i,
-  );
-
-  if (!match) {
-    return '00:00';
-  }
-
-  let hour = Number(match[1]);
-  const minute = match[2];
-  const period = match[3].toUpperCase();
-
-  if (period === 'PM' && hour !== 12) {
-    hour += 12;
-  }
-
-  if (period === 'AM' && hour === 12) {
-    hour = 0;
-  }
-
-  return `${String(hour).padStart(2, '0')}:${minute}`;
-}
-
-function getGoals(booking: DiscoveryBooking): string {
-  if (!booking.goals || booking.goals.length === 0) {
-    return 'No goals provided';
-  }
-
-  return booking.goals.join(', ');
-}
 
 // ============================================================
 // PAGE
 // ============================================================
 
 export default function DiscoveryCallsPage() {
-  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [refreshKey, setRefreshKey] =
+    React.useState(0);
 
   const {
-    data: bookings,
+    data: discoveryCalls,
     loading,
-  } = useFetch(fetchDiscoveryBookings, [refreshKey]);
+  } = useFetch(
+    fetchDiscoveryCalls,
+    [refreshKey],
+  );
 
-  const refetch = () => {
+  const refetch = () =>
     setRefreshKey((current) => current + 1);
-  };
 
-  const [detailsOpen, setDetailsOpen] = React.useState(false);
-  const [editingBooking, setEditingBooking] =
-    React.useState<DiscoveryBooking | null>(null);
+  const [open, setOpen] =
+    React.useState(false);
 
-  const [notesText, setNotesText] = React.useState('');
-  const [outcomeText, setOutcomeText] = React.useState('');
+  const [notesOpen, setNotesOpen] =
+    React.useState(false);
 
-  const [saving, setSaving] = React.useState(false);
+  const [editingCall, setEditingCall] =
+    React.useState<DiscoveryCall | null>(null);
 
-  const allBookings = bookings ?? [];
+  const [notesText, setNotesText] =
+    React.useState('');
 
-  const pending = allBookings.filter(
-    (booking) => booking.status === 'pending',
+  const [savingNotes, setSavingNotes] =
+    React.useState(false);
+
+  const [submitting, setSubmitting] =
+    React.useState(false);
+
+  const [form, setForm] =
+    React.useState({
+      clientName: '',
+      type: 'Social Growth Sprint' as CallType,
+      duration: '30',
+      date: '',
+      status: 'Scheduled',
+      paymentStatus: 'Pending',
+      notes: '',
+      outcome: '',
+    });
+
+  const calls = discoveryCalls ?? [];
+
+  const upcoming = calls.filter(
+    (call) =>
+      call.status === 'Scheduled',
   );
 
-  const confirmed = allBookings.filter(
-    (booking) => booking.status === 'confirmed',
+  const completed = calls.filter(
+    (call) =>
+      call.status === 'Completed',
   );
 
-  const completed = allBookings.filter(
-    (booking) => booking.status === 'completed',
-  );
-
-  const cancelled = allBookings.filter(
-    (booking) => booking.status === 'cancelled',
-  );
-
-  const upcoming = allBookings.filter(
-    (booking) =>
-      booking.status === 'pending' ||
-      booking.status === 'confirmed',
-  );
-
-  const paidCount = allBookings.filter(
-    (booking) =>
-      Number(booking.service_price ?? 0) > 0,
+  const paidCount = calls.filter(
+    (call) =>
+      call.paymentStatus === 'Paid',
   ).length;
 
   // ============================================================
-  // OPEN DETAILS
+  // RESET
   // ============================================================
 
-  function openBooking(booking: DiscoveryBooking) {
-    setEditingBooking(booking);
-
-    setNotesText(booking.notes ?? '');
-
-    setOutcomeText(
-      booking.status === 'completed'
-        ? 'Call completed'
-        : '',
-    );
-
-    setDetailsOpen(true);
+  function resetForm() {
+    setForm({
+      clientName: '',
+      type: 'Social Growth Sprint',
+      duration: '30',
+      date: '',
+      status: 'Scheduled',
+      paymentStatus: 'Pending',
+      notes: '',
+      outcome: '',
+    });
   }
 
   // ============================================================
-  // UPDATE STATUS
+  // ADMIN BOOKING
   // ============================================================
 
-  async function handleStatusChange(status: string) {
-    if (!editingBooking) return;
+  async function handleSubmit(
+    e: React.FormEvent,
+  ) {
+    e.preventDefault();
 
-    setSaving(true);
+    if (!form.clientName.trim()) {
+      toast.error(
+        'Please enter the client name.',
+      );
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
-      await updateDiscoveryBooking(
-        editingBooking.id,
-        {
-          status,
-        },
-      );
+      await insertDiscoveryCall({
+        client_name:
+          form.clientName.trim(),
 
-      toast.success('Booking status updated');
+        type: form.type,
 
-      setEditingBooking({
-        ...editingBooking,
-        status,
+        duration:
+          Number(form.duration) || 30,
+
+        date:
+          form.date ||
+          new Date().toISOString(),
+
+        status: form.status,
+
+        payment_status:
+          form.paymentStatus,
+
+        notes: form.notes,
+
+        outcome: form.outcome,
       });
 
+      toast.success(
+        'Discovery call booked successfully.',
+      );
+
+      setOpen(false);
+
+      resetForm();
+
       refetch();
-    } catch (error: any) {
+    } catch (err: any) {
+      console.error(
+        'BOOKING ERROR:',
+        err,
+      );
+
       toast.error(
-        'Failed to update booking status',
+        'Failed to book call',
         {
           description:
-            error?.message ||
-            'Something went wrong.',
+            err?.message ||
+            'Unable to save booking.',
         },
       );
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   }
 
   // ============================================================
-  // SAVE NOTES
+  // NOTES
   // ============================================================
 
-  async function handleSaveDetails(
-    event: React.FormEvent,
+  function openNotes(
+    call: DiscoveryCall,
   ) {
-    event.preventDefault();
+    setEditingCall(call);
 
-    if (!editingBooking) return;
+    setNotesText(
+      call.notes || '',
+    );
 
-    setSaving(true);
+    setNotesOpen(true);
+  }
+
+  async function handleSaveNotes(
+    e: React.FormEvent,
+  ) {
+    e.preventDefault();
+
+    if (!editingCall) return;
+
+    setSavingNotes(true);
 
     try {
-      await updateDiscoveryBooking(
-        editingBooking.id,
+      await updateDiscoveryCall(
+        editingCall.id,
         {
           notes: notesText,
-          status:
-            editingBooking.status === 'completed'
-              ? 'completed'
-              : editingBooking.status,
-        },
-      );
-
-      toast.success('Booking details saved');
-
-      setDetailsOpen(false);
-
-      setEditingBooking(null);
-
-      refetch();
-    } catch (error: any) {
-      toast.error(
-        'Failed to save booking',
-        {
-          description:
-            error?.message ||
-            'Something went wrong.',
-        },
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ============================================================
-  // COMPLETE CALL
-  // ============================================================
-
-  async function handleComplete(
-    booking: DiscoveryBooking,
-  ) {
-    try {
-      await updateDiscoveryBooking(
-        booking.id,
-        {
-          status: 'completed',
         },
       );
 
       toast.success(
-        `${booking.name}'s call marked as completed`,
+        'Notes saved.',
+      );
+
+      setNotesOpen(false);
+
+      setEditingCall(null);
+
+      refetch();
+    } catch (err: any) {
+      toast.error(
+        'Failed to save notes',
+        {
+          description:
+            err?.message ||
+            'Unable to save notes.',
+        },
+      );
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
+  // ============================================================
+  // COMPLETE / PROPOSAL
+  // ============================================================
+
+  async function handleGenerateProposal(
+    call: DiscoveryCall,
+  ) {
+    try {
+      await updateDiscoveryCall(
+        call.id,
+        {
+          status: 'Completed',
+
+          outcome:
+            'Proposal generated and sent to client',
+        },
+      );
+
+      toast.success(
+        'Proposal generated.',
+        {
+          description:
+            `${call.clientName}'s call has been marked as completed.`,
+        },
       );
 
       refetch();
-    } catch (error: any) {
+    } catch (err: any) {
       toast.error(
-        'Failed to complete call',
+        'Failed to generate proposal',
         {
           description:
-            error?.message ||
-            'Something went wrong.',
+            err?.message ||
+            'Unable to update booking.',
         },
       );
     }
@@ -387,231 +375,67 @@ export default function DiscoveryCallsPage() {
   // ============================================================
 
   async function handleDelete(
-    booking: DiscoveryBooking,
+    id: string,
   ) {
-    const confirmed = window.confirm(
-      `Delete the booking from ${booking.name}?`,
-    );
-
-    if (!confirmed) return;
-
     try {
-      await deleteDiscoveryBooking(
-        booking.id,
+      await deleteDiscoveryCall(id);
+
+      toast.success(
+        'Booking deleted.',
       );
 
-      toast.success('Booking deleted');
-
-      if (
-        editingBooking?.id === booking.id
-      ) {
-        setDetailsOpen(false);
-        setEditingBooking(null);
-      }
-
       refetch();
-    } catch (error: any) {
+    } catch (err: any) {
       toast.error(
         'Failed to delete booking',
         {
           description:
-            error?.message ||
-            'Something went wrong.',
+            err?.message ||
+            'Unable to delete booking.',
         },
       );
     }
   }
 
   // ============================================================
-  // BOOKING CARD
+  // DATE FORMAT
   // ============================================================
 
-  function BookingCard({
-    booking,
-    index,
-  }: {
-    booking: DiscoveryBooking;
-    index: number;
-  }) {
-    return (
-      <motion.div
-        initial={{
-          opacity: 0,
-          y: 10,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-        }}
-        transition={{
-          delay: index * 0.05,
-        }}
-      >
-        <Card className="overflow-hidden">
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <PhoneCall className="h-4 w-4" />
-                </div>
+  function formatDate(
+    value: string,
+  ) {
+    const date = new Date(value);
 
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">
-                    {booking.name}
-                  </p>
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
 
-                  <p className="truncate text-xs text-muted-foreground">
-                    {booking.service_name}
-                  </p>
-                </div>
-              </div>
+    return date.toLocaleDateString(
+      'en-PH',
+      {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      },
+    );
+  }
 
-              <Badge variant="outline">
-                {formatStatus(booking.status)}
-              </Badge>
-            </div>
+  function formatTime(
+    value: string,
+  ) {
+    const date = new Date(value);
 
-            {/* DATE */}
-            <div className="mt-4 flex items-center gap-2 text-sm">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
 
-              <span className="font-medium">
-                {formatBookingDate(
-                  booking.date,
-                  booking.time,
-                )}
-              </span>
-
-              <span className="text-muted-foreground">
-                at {formatBookingTime(booking.time)}
-              </span>
-            </div>
-
-            {/* CONTACT */}
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                <Mail className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  {booking.email}
-                </span>
-              </div>
-
-              {booking.phone && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Phone className="h-3.5 w-3.5" />
-                  <span>
-                    {booking.phone}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* COMPANY */}
-            {booking.company && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5" />
-                <span>
-                  {booking.company}
-                </span>
-              </div>
-            )}
-
-            {/* DETAILS */}
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Budget
-                </p>
-
-                <p className="mt-1 text-xs font-medium">
-                  {booking.budget || 'Not specified'}
-                </p>
-              </div>
-
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Timeline
-                </p>
-
-                <p className="mt-1 text-xs font-medium">
-                  {booking.timeline || 'Not specified'}
-                </p>
-              </div>
-            </div>
-
-            {/* GOALS */}
-            <div className="mt-3 rounded-lg bg-muted/50 p-3">
-              <div className="flex items-center gap-2">
-                <Target className="h-3.5 w-3.5 text-muted-foreground" />
-
-                <p className="text-xs font-medium text-muted-foreground">
-                  Goals
-                </p>
-              </div>
-
-              <p className="mt-1 text-sm">
-                {getGoals(booking)}
-              </p>
-            </div>
-
-            {/* NOTES */}
-            {booking.notes && (
-              <div className="mt-3 rounded-lg border p-3">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Notes
-                  </p>
-                </div>
-
-                <p className="mt-1 line-clamp-3 text-sm">
-                  {booking.notes}
-                </p>
-              </div>
-            )}
-
-            {/* ACTIONS */}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() =>
-                  openBooking(booking)
-                }
-              >
-                <FileText className="mr-1.5 h-3.5 w-3.5" />
-                View Details
-              </Button>
-
-              {booking.status !== 'completed' &&
-                booking.status !== 'cancelled' && (
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={() =>
-                      handleComplete(booking)
-                    }
-                  >
-                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-                    Complete
-                  </Button>
-                )}
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  handleDelete(booking)
-                }
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+    return date.toLocaleTimeString(
+      'en-PH',
+      {
+        hour: 'numeric',
+        minute: '2-digit',
+      },
     );
   }
 
@@ -623,8 +447,19 @@ export default function DiscoveryCallsPage() {
     <DashboardShell>
       <PageHeader
         title="Discovery Calls"
-        description="Manage booking requests submitted from your public booking form"
-      />
+        description="Manage booked strategy sessions and website roadmap calls"
+      >
+        <Button
+          size="sm"
+          onClick={() => {
+            resetForm();
+            setOpen(true);
+          }}
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          Book Call
+        </Button>
+      </PageHeader>
 
       {/* ======================================================
           KPI
@@ -632,17 +467,17 @@ export default function DiscoveryCallsPage() {
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          label="Total Bookings"
-          value={String(allBookings.length)}
+          label="Total Calls"
+          value={String(calls.length)}
           icon={PhoneCall}
           index={0}
         />
 
         <KpiCard
-          label="Pending"
-          value={String(pending.length)}
-          icon={Clock}
-          accent="text-amber-600 bg-amber-100 dark:bg-amber-500/15 dark:text-amber-400"
+          label="Upcoming"
+          value={String(upcoming.length)}
+          icon={Calendar}
+          accent="text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400"
           index={1}
         />
 
@@ -664,51 +499,47 @@ export default function DiscoveryCallsPage() {
       </div>
 
       {/* ======================================================
-          SERVICE SUMMARY
+          CALL TYPES
       ====================================================== */}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        {[
-          {
-            name: 'Social Growth Sprint',
-            duration: '30 min',
-            icon: TrendingUp,
-          },
-          {
-            name: 'Brand Clarity Session',
-            duration: '45 min',
-            icon: PhoneCall,
-          },
-          {
-            name: 'Website Roadmap Call',
-            duration: '60 min',
-            icon: Video,
-          },
-        ].map((service) => {
-          const Icon = service.icon;
+        {(
+          Object.keys(
+            callTypeMeta,
+          ) as CallType[]
+        ).map((type) => {
+          const meta =
+            callTypeMeta[type];
+
+          const Icon =
+            meta.icon;
 
           const count =
-            allBookings.filter(
-              (booking) =>
-                booking.service_name ===
-                service.name,
+            calls.filter(
+              (call) =>
+                call.type === type,
             ).length;
 
           return (
-            <Card key={service.name}>
+            <Card key={type}>
               <CardContent className="p-5">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <div
+                  className={cn(
+                    'mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br text-white',
+                    meta.color,
+                  )}
+                >
                   <Icon className="h-5 w-5" />
                 </div>
 
                 <p className="text-sm font-semibold">
-                  {service.name}
+                  {type}
                 </p>
 
                 <div className="mt-1 flex items-center gap-3">
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    {service.duration}
+                    {meta.duration}
                   </span>
 
                   <span className="text-xs text-muted-foreground">
@@ -734,16 +565,8 @@ export default function DiscoveryCallsPage() {
             Upcoming ({upcoming.length})
           </TabsTrigger>
 
-          <TabsTrigger value="pending">
-            Pending ({pending.length})
-          </TabsTrigger>
-
           <TabsTrigger value="completed">
             Completed ({completed.length})
-          </TabsTrigger>
-
-          <TabsTrigger value="cancelled">
-            Cancelled ({cancelled.length})
           </TabsTrigger>
         </TabsList>
 
@@ -756,46 +579,167 @@ export default function DiscoveryCallsPage() {
           className="mt-4"
         >
           {loading ? (
-            <LoadingCards />
+            <div className="grid gap-4 lg:grid-cols-2">
+              {Array.from({
+                length: 4,
+              }).map((_, index) => (
+                <Card key={index}>
+                  <CardContent className="p-5">
+                    <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+
+                    <div className="mt-4 h-4 w-56 animate-pulse rounded bg-muted" />
+
+                    <div className="mt-4 h-20 animate-pulse rounded-lg bg-muted" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : upcoming.length === 0 ? (
-            <EmptyState text="No upcoming discovery calls." />
+            <Card>
+              <CardContent className="py-16 text-center">
+                <Calendar className="mx-auto h-10 w-10 text-muted-foreground" />
+
+                <h3 className="mt-4 text-lg font-semibold">
+                  No upcoming bookings
+                </h3>
+
+                <p className="mt-2 text-sm text-muted-foreground">
+                  New booking requests from your website will appear here.
+                </p>
+              </CardContent>
+            </Card>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {upcoming.map(
-                (booking, index) => (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    index={index}
-                  />
-                ),
-              )}
-            </div>
-          )}
-        </TabsContent>
+                (call, index) => {
+                  const meta =
+                    callTypeMeta[
+                      call.type as CallType
+                    ] ??
+                    callTypeMeta[
+                      'Social Growth Sprint'
+                    ];
 
-        {/* ====================================================
-            PENDING
-        ==================================================== */}
+                  return (
+                    <motion.div
+                      key={call.id}
+                      initial={{
+                        opacity: 0,
+                        y: 10,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                      }}
+                      transition={{
+                        delay:
+                          index * 0.05,
+                      }}
+                    >
+                      <Card>
+                        <CardContent className="p-5">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br text-white',
+                                  meta.color,
+                                )}
+                              >
+                                <PhoneCall className="h-4 w-4" />
+                              </div>
 
-        <TabsContent
-          value="pending"
-          className="mt-4"
-        >
-          {loading ? (
-            <LoadingCards />
-          ) : pending.length === 0 ? (
-            <EmptyState text="No pending booking requests." />
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {pending.map(
-                (booking, index) => (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    index={index}
-                  />
-                ),
+                              <div>
+                                <p className="text-sm font-semibold">
+                                  {call.clientName}
+                                </p>
+
+                                <p className="text-xs text-muted-foreground">
+                                  {call.type} ·{' '}
+                                  {call.duration} min
+                                </p>
+                              </div>
+                            </div>
+
+                            <StatusBadge
+                              status={
+                                call.paymentStatus
+                              }
+                            />
+                          </div>
+
+                          <div className="mt-4 flex items-center gap-2 text-sm">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+
+                            <span className="font-medium">
+                              {formatDate(
+                                call.date,
+                              )}
+                            </span>
+
+                            <span className="text-muted-foreground">
+                              at{' '}
+                              {formatTime(
+                                call.date,
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="mt-3 rounded-lg bg-muted/50 p-3">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Notes
+                            </p>
+
+                            <p className="mt-1 text-sm">
+                              {call.notes ||
+                                'No notes provided.'}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() =>
+                                openNotes(
+                                  call,
+                                )
+                              }
+                            >
+                              <FileText className="mr-1.5 h-3.5 w-3.5" />
+                              Add Notes
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              onClick={() =>
+                                handleGenerateProposal(
+                                  call,
+                                )
+                              }
+                            >
+                              Generate Proposal
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleDelete(
+                                  call.id,
+                                )
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                },
               )}
             </div>
           )}
@@ -809,46 +753,90 @@ export default function DiscoveryCallsPage() {
           value="completed"
           className="mt-4"
         >
-          {loading ? (
-            <LoadingCards />
-          ) : completed.length === 0 ? (
-            <EmptyState text="No completed calls yet." />
+          {completed.length === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <CheckCircle className="mx-auto h-10 w-10 text-muted-foreground" />
+
+                <h3 className="mt-4 text-lg font-semibold">
+                  No completed calls
+                </h3>
+
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Completed discovery calls will appear here.
+                </p>
+              </CardContent>
+            </Card>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {completed.map(
-                (booking, index) => (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    index={index}
-                  />
-                ),
-              )}
-            </div>
-          )}
-        </TabsContent>
+                (call, index) => (
+                  <motion.div
+                    key={call.id}
+                    initial={{
+                      opacity: 0,
+                      y: 10,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    transition={{
+                      delay:
+                        index * 0.05,
+                    }}
+                  >
+                    <Card>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">
+                              {call.clientName}
+                            </p>
 
-        {/* ====================================================
-            CANCELLED
-        ==================================================== */}
+                            <p className="text-xs text-muted-foreground">
+                              {call.type} ·{' '}
+                              {formatDate(
+                                call.date,
+                              )}
+                            </p>
+                          </div>
 
-        <TabsContent
-          value="cancelled"
-          className="mt-4"
-        >
-          {loading ? (
-            <LoadingCards />
-          ) : cancelled.length === 0 ? (
-            <EmptyState text="No cancelled bookings." />
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {cancelled.map(
-                (booking, index) => (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    index={index}
-                  />
+                          <StatusBadge
+                            status={
+                              call.status
+                            }
+                          />
+                        </div>
+
+                        <div className="mt-3 rounded-lg bg-emerald-500/5 p-3">
+                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            Outcome
+                          </p>
+
+                          <p className="mt-1 text-sm">
+                            {call.outcome ||
+                              'No outcome recorded.'}
+                          </p>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              handleDelete(
+                                call.id,
+                              )
+                            }
+                          >
+                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                            Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
                 ),
               )}
             </div>
@@ -857,191 +845,74 @@ export default function DiscoveryCallsPage() {
       </Tabs>
 
       {/* ======================================================
-          DETAILS DIALOG
+          ADMIN BOOKING DIALOG
       ====================================================== */}
 
       <Dialog
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
+        open={open}
+        onOpenChange={setOpen}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              Discovery Booking
+              Book Discovery Call
             </DialogTitle>
           </DialogHeader>
 
-          {editingBooking && (
-            <form
-              onSubmit={handleSaveDetails}
-              className="space-y-5"
-            >
-              {/* CLIENT */}
-              <div className="rounded-xl border p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Client
-                </p>
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="clientName">
+                Client Name
+              </Label>
 
-                <p className="mt-1 text-lg font-semibold">
-                  {editingBooking.name}
-                </p>
+              <Input
+                id="clientName"
+                value={
+                  form.clientName
+                }
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    clientName:
+                      e.target.value,
+                  })
+                }
+                placeholder="e.g. Patricia Lim"
+                required
+              />
+            </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    {editingBooking.email}
-                  </div>
-
-                  {editingBooking.phone && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Phone className="h-4 w-4" />
-                      {editingBooking.phone}
-                    </div>
-                  )}
-
-                  {editingBooking.company && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Building2 className="h-4 w-4" />
-                      {editingBooking.company}
-                    </div>
-                  )}
-
-                  {editingBooking.website && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Globe className="h-4 w-4" />
-                      {editingBooking.website}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* SERVICE */}
-              <div className="rounded-xl border p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Booking
-                </p>
-
-                <p className="mt-1 text-base font-semibold">
-                  {editingBooking.service_name}
-                </p>
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge variant="outline">
-                    {getDuration(
-                      editingBooking.service_name,
-                    )}
-                  </Badge>
-
-                  {editingBooking.service_price !==
-                    null && (
-                    <Badge variant="outline">
-                      ₱
-                      {editingBooking.service_price}
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Date
-                    </p>
-
-                    <p className="text-sm font-medium">
-                      {formatBookingDate(
-                        editingBooking.date,
-                        editingBooking.time,
-                      )}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Time
-                    </p>
-
-                    <p className="text-sm font-medium">
-                      {formatBookingTime(
-                        editingBooking.time,
-                      )}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Contact Method
-                    </p>
-
-                    <p className="text-sm font-medium">
-                      {editingBooking.contact_method ||
-                        'Not specified'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Budget
-                    </p>
-
-                    <p className="text-sm font-medium">
-                      {editingBooking.budget ||
-                        'Not specified'}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Timeline
-                    </p>
-
-                    <p className="text-sm font-medium">
-                      {editingBooking.timeline ||
-                        'Not specified'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* GOALS */}
-              <div className="rounded-xl border p-4">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
-
-                  <p className="text-sm font-semibold">
-                    Goals
-                  </p>
-                </div>
-
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {getGoals(editingBooking)}
-                </p>
-              </div>
-
-              {/* STATUS */}
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>
-                  Booking Status
+                  Call Type
                 </Label>
 
                 <Select
-                  value={editingBooking.status}
-                  onValueChange={
-                    handleStatusChange
+                  value={form.type}
+                  onValueChange={(value) =>
+                    setForm({
+                      ...form,
+                      type:
+                        value as CallType,
+                    })
                   }
-                  disabled={saving}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
 
                   <SelectContent>
-                    {statusOptions.map(
-                      (status) => (
+                    {callTypes.map(
+                      (type) => (
                         <SelectItem
-                          key={status}
-                          value={status}
+                          key={type}
+                          value={type}
                         >
-                          {formatStatus(status)}
+                          {type}
                         </SelectItem>
                       ),
                     )}
@@ -1049,131 +920,267 @@ export default function DiscoveryCallsPage() {
                 </Select>
               </div>
 
-              {/* NOTES */}
               <div className="space-y-2">
-                <Label htmlFor="booking-notes">
-                  Notes
+                <Label htmlFor="duration">
+                  Duration (min)
                 </Label>
 
-                <Textarea
-                  id="booking-notes"
-                  rows={5}
-                  value={notesText}
-                  onChange={(event) =>
-                    setNotesText(
-                      event.target.value,
-                    )
+                <Input
+                  id="duration"
+                  type="number"
+                  value={
+                    form.duration
                   }
-                  placeholder="Add internal notes about this discovery call..."
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      duration:
+                        e.target.value,
+                    })
+                  }
+                  required
                 />
               </div>
+            </div>
 
-              {/* OUTCOME */}
+            <div className="space-y-2">
+              <Label htmlFor="date">
+                Date & Time
+              </Label>
+
+              <Input
+                id="date"
+                type="datetime-local"
+                value={form.date}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    date:
+                      e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="booking-outcome">
-                  Outcome
+                <Label>
+                  Status
                 </Label>
 
-                <Textarea
-                  id="booking-outcome"
-                  rows={3}
-                  value={outcomeText}
-                  onChange={(event) =>
-                    setOutcomeText(
-                      event.target.value,
-                    )
+                <Select
+                  value={
+                    form.status
                   }
-                  placeholder="Record the outcome of the call..."
-                />
+                  onValueChange={(
+                    value,
+                  ) =>
+                    setForm({
+                      ...form,
+                      status:
+                        value,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="Scheduled">
+                      Scheduled
+                    </SelectItem>
+
+                    <SelectItem value="Completed">
+                      Completed
+                    </SelectItem>
+
+                    <SelectItem value="Cancelled">
+                      Cancelled
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() =>
-                    handleDelete(
-                      editingBooking,
-                    )
+              <div className="space-y-2">
+                <Label>
+                  Payment Status
+                </Label>
+
+                <Select
+                  value={
+                    form.paymentStatus
+                  }
+                  onValueChange={(
+                    value,
+                  ) =>
+                    setForm({
+                      ...form,
+                      paymentStatus:
+                        value,
+                    })
                   }
                 >
-                  <Trash2 className="mr-1.5 h-4 w-4" />
-                  Delete
-                </Button>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    setDetailsOpen(false)
-                  }
-                >
-                  Cancel
-                </Button>
+                  <SelectContent>
+                    <SelectItem value="Paid">
+                      Paid
+                    </SelectItem>
 
-                <Button
-                  type="submit"
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Saving...'
-                    : 'Save Changes'}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
+                    <SelectItem value="Free">
+                      Free
+                    </SelectItem>
+
+                    <SelectItem value="Pending">
+                      Pending
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">
+                Notes
+              </Label>
+
+              <Textarea
+                id="notes"
+                value={form.notes}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    notes:
+                      e.target.value,
+                  })
+                }
+                placeholder="Call context and goals..."
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="outcome">
+                Outcome
+              </Label>
+
+              <Textarea
+                id="outcome"
+                value={
+                  form.outcome
+                }
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    outcome:
+                      e.target.value,
+                  })
+                }
+                placeholder="Result of the call..."
+                rows={2}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setOpen(false)
+                }
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={
+                  submitting
+                }
+              >
+                {submitting
+                  ? 'Booking...'
+                  : 'Book Call'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+          NOTES DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={notesOpen}
+        onOpenChange={
+          setNotesOpen
+        }
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Call Notes —{' '}
+              {
+                editingCall?.clientName
+              }
+            </DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={
+              handleSaveNotes
+            }
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="meeting-notes">
+                Meeting notes
+              </Label>
+
+              <Textarea
+                id="meeting-notes"
+                rows={6}
+                placeholder="Key discussion points, action items, next steps..."
+                value={notesText}
+                onChange={(e) =>
+                  setNotesText(
+                    e.target.value,
+                  )
+                }
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setNotesOpen(
+                    false,
+                  )
+                }
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={
+                  savingNotes
+                }
+              >
+                {savingNotes
+                  ? 'Saving...'
+                  : 'Save Notes'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </DashboardShell>
-  );
-}
-
-// ============================================================
-// LOADING
-// ============================================================
-
-function LoadingCards() {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {Array.from({ length: 4 }).map(
-        (_, index) => (
-          <Card key={index}>
-            <CardContent className="p-5">
-              <div className="space-y-4">
-                <div className="h-5 w-48 animate-pulse rounded bg-muted" />
-
-                <div className="h-4 w-64 animate-pulse rounded bg-muted" />
-
-                <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
-
-                <div className="h-10 animate-pulse rounded-lg bg-muted/50" />
-              </div>
-            </CardContent>
-          </Card>
-        ),
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// EMPTY STATE
-// ============================================================
-
-function EmptyState({
-  text,
-}: {
-  text: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="py-16 text-center">
-        <PhoneCall className="mx-auto h-8 w-8 text-muted-foreground/50" />
-
-        <p className="mt-3 text-sm text-muted-foreground">
-          {text}
-        </p>
-      </CardContent>
-    </Card>
   );
 }

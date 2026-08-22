@@ -54,22 +54,106 @@ function mapLead(r: any): Lead {
 }
 
 /**
- * Existing discovery_calls mapper.
- * Kept so other parts of your dashboard that may still use
- * discovery_calls don't break.
+ * Converts discovery_bookings into the DiscoveryCall
+ * structure used by the admin dashboard.
  */
-function mapDiscoveryCall(r: any): DiscoveryCall {
+function mapDiscoveryBooking(r: any): DiscoveryCall {
+  let combinedDate = '';
+
+  if (r.date && r.time) {
+    const parsed = new Date(`${r.date} ${r.time}`);
+
+    if (!Number.isNaN(parsed.getTime())) {
+      combinedDate = parsed.toISOString();
+    } else {
+      combinedDate = `${r.date} ${r.time}`;
+    }
+  } else if (r.date) {
+    combinedDate = r.date;
+  } else {
+    combinedDate = new Date().toISOString();
+  }
+
+  // Convert public booking status to admin status
+  let status = 'Scheduled';
+
+  switch (String(r.status ?? '').toLowerCase()) {
+    case 'completed':
+      status = 'Completed';
+      break;
+
+    case 'cancelled':
+    case 'canceled':
+      status = 'Cancelled';
+      break;
+
+    case 'scheduled':
+      status = 'Scheduled';
+      break;
+
+    case 'pending':
+    default:
+      status = 'Scheduled';
+      break;
+  }
+
+  // Payment status
+  let paymentStatus = 'Pending';
+
+  if (Number(r.service_price ?? 0) === 0) {
+    paymentStatus = 'Free';
+  }
+
+  if (
+    String(r.payment_status ?? '').toLowerCase() === 'paid'
+  ) {
+    paymentStatus = 'Paid';
+  }
+
+  if (
+    String(r.payment_status ?? '').toLowerCase() === 'free'
+  ) {
+    paymentStatus = 'Free';
+  }
+
   return {
-    id: r.id,
-    clientName: r.client_name,
-    type: r.type,
-    duration: r.duration,
-    date: r.date,
-    status: r.status,
-    paymentStatus: r.payment_status,
+    id: String(r.id),
+    clientName: r.name ?? '',
+    type: r.service_name ?? 'Social Growth Sprint',
+    duration: getBookingDuration(r),
+    date: combinedDate,
+    status: status as any,
+    paymentStatus: paymentStatus as any,
     notes: r.notes ?? '',
     outcome: r.outcome ?? '',
   };
+}
+
+/**
+ * Get duration from the selected service.
+ */
+function getBookingDuration(r: any): number {
+  if (r.duration) {
+    const numericDuration = Number(r.duration);
+
+    if (!Number.isNaN(numericDuration)) {
+      return numericDuration;
+    }
+  }
+
+  switch (r.service_id) {
+    case 'social-growth':
+      return 30;
+
+    case 'brand-clarity':
+      return 45;
+
+    case 'website-roadmap':
+      return 60;
+
+    default:
+      return 30;
+  }
 }
 
 function mapProject(r: any): Project {
@@ -136,7 +220,7 @@ function mapWebsiteRequest(r: any): WebsiteRequest {
     id: r.id,
     business: r.business,
     businessType: r.business_type,
-    goals: r.goals,
+    goals: r.goals ?? '',
     pagesRequested: r.pages_requested ?? [],
     featuresRequested: r.features_requested ?? [],
     budget: r.budget,
@@ -175,200 +259,13 @@ function mapInvoice(r: any): Invoice {
 }
 
 // ============================================================
-// DISCOVERY BOOKINGS
-// ============================================================
-
-/**
- * This interface matches the actual discovery_bookings table
- * used by your public booking form.
- */
-export interface DiscoveryBooking {
-  id: string;
-
-  service_id: string | null;
-  service_name: string;
-  service_price: number | string | null;
-
-  date: string;
-  time: string;
-
-  name: string;
-  email: string;
-  phone: string | null;
-  company: string | null;
-  website: string | null;
-
-  contact_method: string | null;
-
-  budget: string;
-  timeline: string;
-
-  goals: string[] | null;
-  notes: string | null;
-
-  status: string;
-
-  created_at?: string;
-  updated_at?: string;
-}
-
-/**
- * Converts the database booking into the structure
- * used by the Admin Discovery Calls page.
- */
-export function mapDiscoveryBooking(r: any): DiscoveryBooking {
-  return {
-    id: String(r.id),
-
-    service_id: r.service_id ?? null,
-    service_name: r.service_name ?? '',
-    service_price: r.service_price ?? null,
-
-    date: r.date ?? '',
-    time: r.time ?? '',
-
-    name: r.name ?? '',
-    email: r.email ?? '',
-    phone: r.phone ?? null,
-    company: r.company ?? null,
-    website: r.website ?? null,
-
-    contact_method: r.contact_method ?? null,
-
-    budget: r.budget ?? '',
-    timeline: r.timeline ?? '',
-
-    goals: Array.isArray(r.goals) ? r.goals : [],
-    notes: r.notes ?? null,
-
-    status: r.status ?? 'pending',
-
-    created_at: r.created_at ?? undefined,
-    updated_at: r.updated_at ?? undefined,
-  };
-}
-
-/**
- * Fetch bookings submitted from the public booking form.
- *
- * IMPORTANT:
- * This uses discovery_bookings, NOT discovery_calls.
- */
-export async function fetchDiscoveryBookings(): Promise<DiscoveryBooking[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
-
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .select('*')
-    .order('date', { ascending: true })
-    .order('time', { ascending: true });
-
-  if (error) throw error;
-
-  return (data ?? []).map(mapDiscoveryBooking);
-}
-
-/**
- * Update a booking.
- */
-export async function updateDiscoveryBooking(
-  id: string,
-  payload: Record<string, unknown>,
-): Promise<DiscoveryBooking> {
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapDiscoveryBooking(data);
-}
-
-/**
- * Delete a booking.
- */
-export async function deleteDiscoveryBooking(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('discovery_bookings')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-/**
- * Optional helper if you ever want to create a booking
- * directly from the admin dashboard.
- */
-export async function insertDiscoveryBooking(payload: {
-  service_id?: string | null;
-  service_name: string;
-  service_price?: number | string | null;
-
-  date: string;
-  time: string;
-
-  name: string;
-  email: string;
-  phone?: string | null;
-  company?: string | null;
-  website?: string | null;
-
-  contact_method?: string | null;
-
-  budget: string;
-  timeline: string;
-
-  goals?: string[];
-  notes?: string | null;
-
-  status?: string;
-}): Promise<DiscoveryBooking> {
-  const { data, error } = await supabase
-    .from('discovery_bookings')
-    .insert({
-      service_id: payload.service_id ?? null,
-      service_name: payload.service_name,
-      service_price: payload.service_price ?? null,
-
-      date: payload.date,
-      time: payload.time,
-
-      name: payload.name,
-      email: payload.email,
-      phone: payload.phone ?? null,
-      company: payload.company ?? null,
-      website: payload.website ?? null,
-
-      contact_method: payload.contact_method ?? null,
-
-      budget: payload.budget,
-      timeline: payload.timeline,
-
-      goals: payload.goals ?? [],
-      notes: payload.notes ?? null,
-
-      status: payload.status ?? 'pending',
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapDiscoveryBooking(data);
-}
-
-// ============================================================
 // FETCH FUNCTIONS
 // ============================================================
 
 export async function fetchClients(): Promise<Client[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.clients);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.clients);
+  }
 
   const { data, error } = await supabase
     .from('clients')
@@ -381,7 +278,9 @@ export async function fetchClients(): Promise<Client[]> {
 }
 
 export async function fetchLeads(): Promise<Lead[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.leads);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.leads);
+  }
 
   const { data, error } = await supabase
     .from('leads')
@@ -393,13 +292,201 @@ export async function fetchLeads(): Promise<Lead[]> {
   return (data ?? []).map(mapLead);
 }
 
+// ============================================================
+// DISCOVERY BOOKINGS
+// ============================================================
+
 /**
- * OLD discovery_calls table.
+ * IMPORTANT:
  *
- * Kept for compatibility.
+ * The public website saves bookings into:
+ *
+ * discovery_bookings
+ *
+ * Therefore the admin dashboard must also read from:
+ *
+ * discovery_bookings
  */
 export async function fetchDiscoveryCalls(): Promise<DiscoveryCall[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.discoveryCalls);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.discoveryCalls);
+  }
+
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to fetch discovery bookings:', error);
+    throw error;
+  }
+
+  return (data ?? []).map(mapDiscoveryBooking);
+}
+
+/**
+ * Admin manually creates a booking.
+ *
+ * This now writes to discovery_bookings instead of discovery_calls.
+ */
+export async function insertDiscoveryCall(payload: {
+  client_name: string;
+  type: string;
+  duration: number;
+  date: string;
+  status: string;
+  payment_status: string;
+  notes: string;
+  outcome: string;
+}) {
+  const parsedDate = new Date(payload.date);
+
+  const dateValue = Number.isNaN(parsedDate.getTime())
+    ? new Date().toISOString().split('T')[0]
+    : parsedDate.toISOString().split('T')[0];
+
+  const timeValue = Number.isNaN(parsedDate.getTime())
+    ? '09:00 AM'
+    : parsedDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+  const serviceId =
+    payload.type === 'Brand Clarity Session'
+      ? 'brand-clarity'
+      : payload.type === 'Website Roadmap Call'
+        ? 'website-roadmap'
+        : 'social-growth';
+
+  const servicePrice =
+    payload.type === 'Brand Clarity Session'
+      ? 500
+      : payload.type === 'Website Roadmap Call'
+        ? 800
+        : 300;
+
+  const bookingStatus =
+    payload.status === 'Completed'
+      ? 'completed'
+      : payload.status === 'Cancelled'
+        ? 'cancelled'
+        : 'pending';
+
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .insert({
+      service_id: serviceId,
+      service_name: payload.type,
+      service_price: servicePrice,
+
+      date: dateValue,
+      time: timeValue,
+
+      name: payload.client_name,
+
+      email: '',
+
+      phone: null,
+      company: null,
+      website: null,
+
+      contact_method: 'Video call',
+
+      budget: 'Not specified',
+      timeline: 'Not specified',
+
+      goals: [],
+
+      notes: payload.notes || null,
+
+      status: bookingStatus,
+
+      payment_status:
+        payload.payment_status === 'Paid'
+          ? 'paid'
+          : payload.payment_status === 'Free'
+            ? 'free'
+            : 'pending',
+
+      outcome: payload.outcome || null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Failed to insert discovery booking:', error);
+    throw error;
+  }
+
+  return mapDiscoveryBooking(data);
+}
+
+export async function updateDiscoveryCall(
+  id: string,
+  payload: Record<string, unknown>,
+) {
+  const updatePayload: Record<string, unknown> = {};
+
+  if ('status' in payload) {
+    const status = String(payload.status);
+
+    updatePayload.status =
+      status === 'Completed'
+        ? 'completed'
+        : status === 'Cancelled'
+          ? 'cancelled'
+          : 'pending';
+  }
+
+  if ('notes' in payload) {
+    updatePayload.notes = payload.notes;
+  }
+
+  if ('outcome' in payload) {
+    updatePayload.outcome = payload.outcome;
+  }
+
+  if ('payment_status' in payload) {
+    updatePayload.payment_status = payload.payment_status;
+  }
+
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .update(updatePayload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Failed to update discovery booking:', error);
+    throw error;
+  }
+
+  return mapDiscoveryBooking(data);
+}
+
+export async function deleteDiscoveryCall(id: string) {
+  const { error } = await supabase
+    .from('discovery_bookings')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Failed to delete discovery booking:', error);
+    throw error;
+  }
+}
+
+// ============================================================
+// OTHER DISCOVERY CALLS LEGACY FUNCTION
+// ============================================================
+
+export async function fetchLegacyDiscoveryCalls(): Promise<DiscoveryCall[]> {
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.discoveryCalls);
+  }
 
   const { data, error } = await supabase
     .from('discovery_calls')
@@ -408,11 +495,27 @@ export async function fetchDiscoveryCalls(): Promise<DiscoveryCall[]> {
 
   if (error) throw error;
 
-  return (data ?? []).map(mapDiscoveryCall);
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    clientName: r.client_name,
+    type: r.type,
+    duration: r.duration,
+    date: r.date,
+    status: r.status,
+    paymentStatus: r.payment_status,
+    notes: r.notes ?? '',
+    outcome: r.outcome ?? '',
+  }));
 }
 
+// ============================================================
+// PROJECTS
+// ============================================================
+
 export async function fetchProjects(): Promise<Project[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.projects);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.projects);
+  }
 
   const { data, error } = await supabase
     .from('projects')
@@ -424,8 +527,14 @@ export async function fetchProjects(): Promise<Project[]> {
   return (data ?? []).map(mapProject);
 }
 
+// ============================================================
+// CONTENT
+// ============================================================
+
 export async function fetchContentItems(): Promise<ContentItem[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.contentItems);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.contentItems);
+  }
 
   const { data, error } = await supabase
     .from('content_items')
@@ -437,8 +546,14 @@ export async function fetchContentItems(): Promise<ContentItem[]> {
   return (data ?? []).map(mapContentItem);
 }
 
+// ============================================================
+// PRODUCTS
+// ============================================================
+
 export async function fetchProducts(): Promise<DigitalProduct[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.digitalProducts);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.digitalProducts);
+  }
 
   const { data, error } = await supabase
     .from('digital_products')
@@ -450,8 +565,14 @@ export async function fetchProducts(): Promise<DigitalProduct[]> {
   return (data ?? []).map(mapProduct);
 }
 
+// ============================================================
+// ORDERS
+// ============================================================
+
 export async function fetchOrders(): Promise<Order[]> {
-  if (!supabaseConfigured) return Promise.resolve(sample.orders);
+  if (!supabaseConfigured) {
+    return Promise.resolve(sample.orders);
+  }
 
   const { data, error } = await supabase
     .from('orders')
@@ -463,8 +584,14 @@ export async function fetchOrders(): Promise<Order[]> {
   return (data ?? []).map(mapOrder);
 }
 
+// ============================================================
+// WEBSITE REQUESTS
+// ============================================================
+
 export async function fetchWebsiteRequests(): Promise<WebsiteRequest[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) {
+    return Promise.resolve([]);
+  }
 
   const { data, error } = await supabase
     .from('website_requests')
@@ -476,8 +603,14 @@ export async function fetchWebsiteRequests(): Promise<WebsiteRequest[]> {
   return (data ?? []).map(mapWebsiteRequest);
 }
 
+// ============================================================
+// TEAM
+// ============================================================
+
 export async function fetchTeam(): Promise<TeamMember[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) {
+    return Promise.resolve([]);
+  }
 
   const { data, error } = await supabase
     .from('team_members')
@@ -489,8 +622,14 @@ export async function fetchTeam(): Promise<TeamMember[]> {
   return (data ?? []).map(mapTeamMember);
 }
 
+// ============================================================
+// INVOICES
+// ============================================================
+
 export async function fetchInvoices(): Promise<Invoice[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) {
+    return Promise.resolve([]);
+  }
 
   const { data, error } = await supabase
     .from('invoices')
@@ -503,7 +642,7 @@ export async function fetchInvoices(): Promise<Invoice[]> {
 }
 
 // ============================================================
-// DASHBOARD DATA TYPES
+// ACTIVITY / NOTIFICATIONS / ANALYTICS
 // ============================================================
 
 export interface Activity {
@@ -540,12 +679,8 @@ export interface CallBooking {
   calls: number;
 }
 
-// ============================================================
-// DASHBOARD FETCH FUNCTIONS
-// ============================================================
-
 export async function fetchActivities(): Promise<Activity[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) return [];
 
   const { data, error } = await supabase
     .from('activities')
@@ -558,7 +693,7 @@ export async function fetchActivities(): Promise<Activity[]> {
 }
 
 export async function fetchNotifications(): Promise<Notification[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) return [];
 
   const { data, error } = await supabase
     .from('notifications')
@@ -571,7 +706,7 @@ export async function fetchNotifications(): Promise<Notification[]> {
 }
 
 export async function fetchMonthlyRevenue(): Promise<MonthlyRevenue[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) return [];
 
   const { data, error } = await supabase
     .from('monthly_revenue')
@@ -584,7 +719,7 @@ export async function fetchMonthlyRevenue(): Promise<MonthlyRevenue[]> {
 }
 
 export async function fetchProductSales(): Promise<ProductSale[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) return [];
 
   const { data, error } = await supabase
     .from('product_sales')
@@ -597,7 +732,7 @@ export async function fetchProductSales(): Promise<ProductSale[]> {
 }
 
 export async function fetchCallBookings(): Promise<CallBooking[]> {
-  if (!supabaseConfigured) return Promise.resolve([]);
+  if (!supabaseConfigured) return [];
 
   const { data, error } = await supabase
     .from('call_bookings')
@@ -958,56 +1093,6 @@ export async function deleteContentItem(id: string) {
 }
 
 // ============================================================
-// OLD DISCOVERY CALL MUTATIONS
-// ============================================================
-
-export async function insertDiscoveryCall(payload: {
-  client_name: string;
-  type: string;
-  duration: number;
-  date: string;
-  status: string;
-  payment_status: string;
-  notes: string;
-  outcome: string;
-}) {
-  const { data, error } = await supabase
-    .from('discovery_calls')
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapDiscoveryCall(data);
-}
-
-export async function updateDiscoveryCall(
-  id: string,
-  payload: Record<string, unknown>,
-) {
-  const { data, error } = await supabase
-    .from('discovery_calls')
-    .update(payload)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return mapDiscoveryCall(data);
-}
-
-export async function deleteDiscoveryCall(id: string) {
-  const { error } = await supabase
-    .from('discovery_calls')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
-// ============================================================
 // WEBSITE REQUEST MUTATIONS
 // ============================================================
 
@@ -1059,7 +1144,7 @@ export async function deleteWebsiteRequest(id: string) {
 }
 
 // ============================================================
-// TEAM MEMBER MUTATIONS
+// TEAM MUTATIONS
 // ============================================================
 
 export async function insertTeamMember(payload: {
