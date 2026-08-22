@@ -17,15 +17,15 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/nexoralogo.png',
+        url: '/public/images/nexoralogo.png',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/nexoralogo.png',
+        url: '/public/images/nexoralogo.png',
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/nexoralogo.svg',
+        url: '/public/images/nexoralogo.svg',
         type: 'image/svg+xml',
       },
     ],
