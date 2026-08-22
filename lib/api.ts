@@ -1,5 +1,6 @@
 import { supabase, supabaseConfigured } from './supabase';
 import * as sample from './data';
+
 import type {
   Client,
   Lead,
@@ -15,7 +16,6 @@ import type {
 
 // ============================================================
 // ROW MAPPERS
-// Convert snake_case DB columns to camelCase TypeScript objects
 // ============================================================
 
 function mapClient(r: any): Client {
@@ -38,62 +38,26 @@ function mapClient(r: any): Client {
   };
 }
 
-/**
- * contact_submissions → Lead
- *
- * Database columns:
- * first_name
- * last_name
- * email
- * brand
- * service
- * budget
- * message
- * status
- * created_at
- * id
- */
 function mapLead(r: any): Lead {
   return {
     id: r.id,
-    name: `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim(),
-    email: r.email ?? '',
-    business: r.brand ?? '',
-    budgetRange: r.budget ?? '',
-    interestedService: r.service ?? '',
-    message: r.message ?? '',
-    source: 'Website',
-    date: r.created_at ?? '',
-    status: normalizeLeadStatus(r.status),
+    name: r.name,
+    email: r.email,
+    business: r.business,
+    budgetRange: r.budget_range,
+    interestedService: r.interested_service,
+    message: r.message,
+    source: r.source,
+    date: r.date,
+    status: r.status,
   };
 }
 
 /**
- * Make database statuses compatible with the LeadStatus type.
+ * Existing discovery_calls mapper.
+ * Kept so other parts of your dashboard that may still use
+ * discovery_calls don't break.
  */
-function normalizeLeadStatus(status: string | null | undefined): Lead['status'] {
-  switch ((status ?? '').toLowerCase()) {
-    case 'contacted':
-      return 'Contacted';
-
-    case 'discovery scheduled':
-      return 'Discovery Scheduled';
-
-    case 'proposal sent':
-      return 'Proposal Sent';
-
-    case 'won':
-      return 'Won';
-
-    case 'lost':
-      return 'Lost';
-
-    case 'new':
-    default:
-      return 'New';
-  }
-}
-
 function mapDiscoveryCall(r: any): DiscoveryCall {
   return {
     id: r.id,
@@ -211,13 +175,200 @@ function mapInvoice(r: any): Invoice {
 }
 
 // ============================================================
+// DISCOVERY BOOKINGS
+// ============================================================
+
+/**
+ * This interface matches the actual discovery_bookings table
+ * used by your public booking form.
+ */
+export interface DiscoveryBooking {
+  id: string;
+
+  service_id: string | null;
+  service_name: string;
+  service_price: number | string | null;
+
+  date: string;
+  time: string;
+
+  name: string;
+  email: string;
+  phone: string | null;
+  company: string | null;
+  website: string | null;
+
+  contact_method: string | null;
+
+  budget: string;
+  timeline: string;
+
+  goals: string[] | null;
+  notes: string | null;
+
+  status: string;
+
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Converts the database booking into the structure
+ * used by the Admin Discovery Calls page.
+ */
+export function mapDiscoveryBooking(r: any): DiscoveryBooking {
+  return {
+    id: String(r.id),
+
+    service_id: r.service_id ?? null,
+    service_name: r.service_name ?? '',
+    service_price: r.service_price ?? null,
+
+    date: r.date ?? '',
+    time: r.time ?? '',
+
+    name: r.name ?? '',
+    email: r.email ?? '',
+    phone: r.phone ?? null,
+    company: r.company ?? null,
+    website: r.website ?? null,
+
+    contact_method: r.contact_method ?? null,
+
+    budget: r.budget ?? '',
+    timeline: r.timeline ?? '',
+
+    goals: Array.isArray(r.goals) ? r.goals : [],
+    notes: r.notes ?? null,
+
+    status: r.status ?? 'pending',
+
+    created_at: r.created_at ?? undefined,
+    updated_at: r.updated_at ?? undefined,
+  };
+}
+
+/**
+ * Fetch bookings submitted from the public booking form.
+ *
+ * IMPORTANT:
+ * This uses discovery_bookings, NOT discovery_calls.
+ */
+export async function fetchDiscoveryBookings(): Promise<DiscoveryBooking[]> {
+  if (!supabaseConfigured) {
+    return Promise.resolve([]);
+  }
+
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .select('*')
+    .order('date', { ascending: true })
+    .order('time', { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map(mapDiscoveryBooking);
+}
+
+/**
+ * Update a booking.
+ */
+export async function updateDiscoveryBooking(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<DiscoveryBooking> {
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return mapDiscoveryBooking(data);
+}
+
+/**
+ * Delete a booking.
+ */
+export async function deleteDiscoveryBooking(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('discovery_bookings')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+/**
+ * Optional helper if you ever want to create a booking
+ * directly from the admin dashboard.
+ */
+export async function insertDiscoveryBooking(payload: {
+  service_id?: string | null;
+  service_name: string;
+  service_price?: number | string | null;
+
+  date: string;
+  time: string;
+
+  name: string;
+  email: string;
+  phone?: string | null;
+  company?: string | null;
+  website?: string | null;
+
+  contact_method?: string | null;
+
+  budget: string;
+  timeline: string;
+
+  goals?: string[];
+  notes?: string | null;
+
+  status?: string;
+}): Promise<DiscoveryBooking> {
+  const { data, error } = await supabase
+    .from('discovery_bookings')
+    .insert({
+      service_id: payload.service_id ?? null,
+      service_name: payload.service_name,
+      service_price: payload.service_price ?? null,
+
+      date: payload.date,
+      time: payload.time,
+
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone ?? null,
+      company: payload.company ?? null,
+      website: payload.website ?? null,
+
+      contact_method: payload.contact_method ?? null,
+
+      budget: payload.budget,
+      timeline: payload.timeline,
+
+      goals: payload.goals ?? [],
+      notes: payload.notes ?? null,
+
+      status: payload.status ?? 'pending',
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return mapDiscoveryBooking(data);
+}
+
+// ============================================================
 // FETCH FUNCTIONS
 // ============================================================
 
 export async function fetchClients(): Promise<Client[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.clients);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.clients);
 
   const { data, error } = await supabase
     .from('clients')
@@ -229,29 +380,26 @@ export async function fetchClients(): Promise<Client[]> {
   return (data ?? []).map(mapClient);
 }
 
-// ============================================================
-// LEADS / CONTACT SUBMISSIONS
-// ============================================================
-
 export async function fetchLeads(): Promise<Lead[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.leads);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.leads);
 
   const { data, error } = await supabase
-    .from('contact_submissions')
+    .from('leads')
     .select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at');
 
   if (error) throw error;
 
   return (data ?? []).map(mapLead);
 }
 
+/**
+ * OLD discovery_calls table.
+ *
+ * Kept for compatibility.
+ */
 export async function fetchDiscoveryCalls(): Promise<DiscoveryCall[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.discoveryCalls);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.discoveryCalls);
 
   const { data, error } = await supabase
     .from('discovery_calls')
@@ -264,9 +412,7 @@ export async function fetchDiscoveryCalls(): Promise<DiscoveryCall[]> {
 }
 
 export async function fetchProjects(): Promise<Project[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.projects);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.projects);
 
   const { data, error } = await supabase
     .from('projects')
@@ -279,9 +425,7 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 export async function fetchContentItems(): Promise<ContentItem[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.contentItems);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.contentItems);
 
   const { data, error } = await supabase
     .from('content_items')
@@ -294,9 +438,7 @@ export async function fetchContentItems(): Promise<ContentItem[]> {
 }
 
 export async function fetchProducts(): Promise<DigitalProduct[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.digitalProducts);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.digitalProducts);
 
   const { data, error } = await supabase
     .from('digital_products')
@@ -309,9 +451,7 @@ export async function fetchProducts(): Promise<DigitalProduct[]> {
 }
 
 export async function fetchOrders(): Promise<Order[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve(sample.orders);
-  }
+  if (!supabaseConfigured) return Promise.resolve(sample.orders);
 
   const { data, error } = await supabase
     .from('orders')
@@ -324,9 +464,7 @@ export async function fetchOrders(): Promise<Order[]> {
 }
 
 export async function fetchWebsiteRequests(): Promise<WebsiteRequest[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('website_requests')
@@ -339,9 +477,7 @@ export async function fetchWebsiteRequests(): Promise<WebsiteRequest[]> {
 }
 
 export async function fetchTeam(): Promise<TeamMember[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('team_members')
@@ -354,9 +490,7 @@ export async function fetchTeam(): Promise<TeamMember[]> {
 }
 
 export async function fetchInvoices(): Promise<Invoice[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('invoices')
@@ -369,7 +503,7 @@ export async function fetchInvoices(): Promise<Invoice[]> {
 }
 
 // ============================================================
-// OTHER DATA TYPES
+// DASHBOARD DATA TYPES
 // ============================================================
 
 export interface Activity {
@@ -406,10 +540,12 @@ export interface CallBooking {
   calls: number;
 }
 
+// ============================================================
+// DASHBOARD FETCH FUNCTIONS
+// ============================================================
+
 export async function fetchActivities(): Promise<Activity[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('activities')
@@ -422,9 +558,7 @@ export async function fetchActivities(): Promise<Activity[]> {
 }
 
 export async function fetchNotifications(): Promise<Notification[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('notifications')
@@ -437,9 +571,7 @@ export async function fetchNotifications(): Promise<Notification[]> {
 }
 
 export async function fetchMonthlyRevenue(): Promise<MonthlyRevenue[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('monthly_revenue')
@@ -452,9 +584,7 @@ export async function fetchMonthlyRevenue(): Promise<MonthlyRevenue[]> {
 }
 
 export async function fetchProductSales(): Promise<ProductSale[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('product_sales')
@@ -467,9 +597,7 @@ export async function fetchProductSales(): Promise<ProductSale[]> {
 }
 
 export async function fetchCallBookings(): Promise<CallBooking[]> {
-  if (!supabaseConfigured) {
-    return Promise.resolve([]);
-  }
+  if (!supabaseConfigured) return Promise.resolve([]);
 
   const { data, error } = await supabase
     .from('call_bookings')
@@ -482,11 +610,7 @@ export async function fetchCallBookings(): Promise<CallBooking[]> {
 }
 
 // ============================================================
-// MUTATIONS
-// ============================================================
-
-// ============================================================
-// CLIENTS
+// CLIENT MUTATIONS
 // ============================================================
 
 export async function insertClient(payload: {
@@ -514,7 +638,7 @@ export async function insertClient(payload: {
 
 export async function updateClient(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('clients')
@@ -538,7 +662,7 @@ export async function deleteClient(id: string) {
 }
 
 // ============================================================
-// LEADS / CONTACT SUBMISSIONS
+// LEAD MUTATIONS
 // ============================================================
 
 export async function insertLead(payload: {
@@ -551,26 +675,9 @@ export async function insertLead(payload: {
   source: string;
   status: string;
 }) {
-  // Split dashboard "name" into first and last name.
-  const nameParts = payload.name.trim().split(/\s+/);
-
-  const firstName = nameParts.shift() ?? '';
-  const lastName = nameParts.join(' ');
-
-  const submission = {
-    first_name: firstName,
-    last_name: lastName,
-    email: payload.email,
-    brand: payload.business || null,
-    service: payload.interested_service || '',
-    budget: payload.budget_range || '',
-    message: payload.message || '',
-    status: normalizeLeadStatus(payload.status),
-  };
-
   const { data, error } = await supabase
-    .from('contact_submissions')
-    .insert(submission)
+    .from('leads')
+    .insert(payload)
     .select()
     .single();
 
@@ -581,47 +688,11 @@ export async function insertLead(payload: {
 
 export async function updateLead(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
-  const updateData: Record<string, unknown> = {};
-
-  if (payload.name !== undefined) {
-    const name = String(payload.name ?? '').trim();
-    const nameParts = name.split(/\s+/);
-
-    updateData.first_name = nameParts.shift() ?? '';
-    updateData.last_name = nameParts.join(' ');
-  }
-
-  if (payload.email !== undefined) {
-    updateData.email = payload.email;
-  }
-
-  if (payload.business !== undefined) {
-    updateData.brand = payload.business;
-  }
-
-  if (payload.interested_service !== undefined) {
-    updateData.service = payload.interested_service;
-  }
-
-  if (payload.budget_range !== undefined) {
-    updateData.budget = payload.budget_range;
-  }
-
-  if (payload.message !== undefined) {
-    updateData.message = payload.message;
-  }
-
-  if (payload.status !== undefined) {
-    updateData.status = normalizeLeadStatus(
-      String(payload.status)
-    );
-  }
-
   const { data, error } = await supabase
-    .from('contact_submissions')
-    .update(updateData)
+    .from('leads')
+    .update(payload)
     .eq('id', id)
     .select()
     .single();
@@ -633,7 +704,7 @@ export async function updateLead(
 
 export async function deleteLead(id: string) {
   const { error } = await supabase
-    .from('contact_submissions')
+    .from('leads')
     .delete()
     .eq('id', id);
 
@@ -641,7 +712,7 @@ export async function deleteLead(id: string) {
 }
 
 // ============================================================
-// PROJECTS
+// PROJECT MUTATIONS
 // ============================================================
 
 export async function insertProject(payload: {
@@ -667,7 +738,7 @@ export async function insertProject(payload: {
 
 export async function updateProject(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('projects')
@@ -691,7 +762,7 @@ export async function deleteProject(id: string) {
 }
 
 // ============================================================
-// INVOICES
+// INVOICE MUTATIONS
 // ============================================================
 
 export async function insertInvoice(payload: {
@@ -715,7 +786,7 @@ export async function insertInvoice(payload: {
 
 export async function updateInvoice(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('invoices')
@@ -739,7 +810,7 @@ export async function deleteInvoice(id: string) {
 }
 
 // ============================================================
-// ORDERS
+// ORDER MUTATIONS
 // ============================================================
 
 export async function insertOrder(payload: {
@@ -764,7 +835,7 @@ export async function insertOrder(payload: {
 
 export async function updateOrder(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('orders')
@@ -788,7 +859,7 @@ export async function deleteOrder(id: string) {
 }
 
 // ============================================================
-// DIGITAL PRODUCTS
+// PRODUCT MUTATIONS
 // ============================================================
 
 export async function insertProduct(payload: {
@@ -814,7 +885,7 @@ export async function insertProduct(payload: {
 
 export async function updateProduct(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('digital_products')
@@ -838,7 +909,7 @@ export async function deleteProduct(id: string) {
 }
 
 // ============================================================
-// CONTENT ITEMS
+// CONTENT MUTATIONS
 // ============================================================
 
 export async function insertContentItem(payload: {
@@ -863,7 +934,7 @@ export async function insertContentItem(payload: {
 
 export async function updateContentItem(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('content_items')
@@ -887,7 +958,7 @@ export async function deleteContentItem(id: string) {
 }
 
 // ============================================================
-// DISCOVERY CALLS
+// OLD DISCOVERY CALL MUTATIONS
 // ============================================================
 
 export async function insertDiscoveryCall(payload: {
@@ -913,7 +984,7 @@ export async function insertDiscoveryCall(payload: {
 
 export async function updateDiscoveryCall(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('discovery_calls')
@@ -937,7 +1008,7 @@ export async function deleteDiscoveryCall(id: string) {
 }
 
 // ============================================================
-// WEBSITE REQUESTS
+// WEBSITE REQUEST MUTATIONS
 // ============================================================
 
 export async function insertWebsiteRequest(payload: {
@@ -964,7 +1035,7 @@ export async function insertWebsiteRequest(payload: {
 
 export async function updateWebsiteRequest(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('website_requests')
@@ -988,7 +1059,7 @@ export async function deleteWebsiteRequest(id: string) {
 }
 
 // ============================================================
-// TEAM MEMBERS
+// TEAM MEMBER MUTATIONS
 // ============================================================
 
 export async function insertTeamMember(payload: {
@@ -1014,7 +1085,7 @@ export async function insertTeamMember(payload: {
 
 export async function updateTeamMember(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ) {
   const { data, error } = await supabase
     .from('team_members')
