@@ -1,15 +1,50 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(
-  process.env.RESEND_API_KEY,
-);
-
 export async function POST(
   request: Request,
 ) {
   try {
-    const body = await request.json();
+    // ============================================================
+    // CHECK ENVIRONMENT VARIABLES
+    // ============================================================
+
+    const apiKey =
+      process.env.RESEND_API_KEY;
+
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL ||
+      'onboarding@resend.dev';
+
+    if (!apiKey) {
+      console.error(
+        'RESEND_API_KEY is not configured.',
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Email service is not configured. Please add RESEND_API_KEY to the environment variables.',
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
+    // ============================================================
+    // CREATE RESEND CLIENT
+    // ============================================================
+
+    const resend =
+      new Resend(apiKey);
+
+    // ============================================================
+    // READ REQUEST
+    // ============================================================
+
+    const body =
+      await request.json();
 
     const {
       to,
@@ -17,7 +52,15 @@ export async function POST(
       message,
     } = body;
 
-    if (!to) {
+    // ============================================================
+    // VALIDATION
+    // ============================================================
+
+    if (
+      !to ||
+      typeof to !== 'string' ||
+      !to.trim()
+    ) {
       return NextResponse.json(
         {
           error:
@@ -29,7 +72,11 @@ export async function POST(
       );
     }
 
-    if (!subject) {
+    if (
+      !subject ||
+      typeof subject !== 'string' ||
+      !subject.trim()
+    ) {
       return NextResponse.json(
         {
           error:
@@ -41,7 +88,11 @@ export async function POST(
       );
     }
 
-    if (!message) {
+    if (
+      !message ||
+      typeof message !== 'string' ||
+      !message.trim()
+    ) {
       return NextResponse.json(
         {
           error:
@@ -53,29 +104,56 @@ export async function POST(
       );
     }
 
+    // ============================================================
+    // PREPARE EMAIL
+    // ============================================================
+
+    const escapedMessage =
+      message
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;')
+        .replace(/\n/g, '<br />');
+
+    const html = `
+      <div
+        style="
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
+          line-height: 1.6;
+          color: #222;
+          white-space: normal;
+        "
+      >
+        ${escapedMessage}
+      </div>
+    `;
+
+    // ============================================================
+    // SEND EMAIL
+    // ============================================================
+
     const {
       data,
       error,
     } = await resend.emails.send({
-      from:
-        process.env.RESEND_FROM_EMAIL ||
-        'onboarding@resend.dev',
-
-      to: [to],
-
-      subject,
-
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-          ${message
-            .replace(/\n/g, '<br />')}
-        </div>
-      `,
+      from: fromEmail,
+      to: [to.trim()],
+      subject: subject.trim(),
+      html,
     });
+
+    // ============================================================
+    // RESEND ERROR
+    // ============================================================
 
     if (error) {
       console.error(
-        'Resend error:',
+        'Resend API error:',
         error,
       );
 
@@ -91,11 +169,26 @@ export async function POST(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      data,
-    });
-  } catch (error: any) {
+    // ============================================================
+    // SUCCESS
+    // ============================================================
+
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          'Email sent successfully.',
+        data,
+      },
+      {
+        status: 200,
+      },
+    );
+  } catch (error) {
+    // ============================================================
+    // UNEXPECTED ERROR
+    // ============================================================
+
     console.error(
       'Send email error:',
       error,
@@ -104,8 +197,9 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          error?.message ||
-          'Something went wrong while sending the email.',
+          error instanceof Error
+            ? error.message
+            : 'Something went wrong while sending the email.',
       },
       {
         status: 500,
