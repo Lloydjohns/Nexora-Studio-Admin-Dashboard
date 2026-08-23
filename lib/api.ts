@@ -30,10 +30,7 @@ function safeString(
   value: unknown,
   fallback = '',
 ): string {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+  if (value === null || value === undefined) {
     return fallback;
   }
 
@@ -188,11 +185,7 @@ function getBookingDuration(
     const numericDuration =
       Number(r.duration);
 
-    if (
-      !Number.isNaN(
-        numericDuration,
-      )
-    ) {
+    if (!Number.isNaN(numericDuration)) {
       return numericDuration;
     }
   }
@@ -219,8 +212,7 @@ function getServiceDetails(
     case 'Brand Clarity Session':
       return {
         serviceId: 'brand-clarity',
-        serviceName:
-          'Brand Clarity Session',
+        serviceName: 'Brand Clarity Session',
         servicePrice: 500,
         duration: 45,
       };
@@ -228,8 +220,7 @@ function getServiceDetails(
     case 'Website Roadmap Call':
       return {
         serviceId: 'website-roadmap',
-        serviceName:
-          'Website Roadmap Call',
+        serviceName: 'Website Roadmap Call',
         servicePrice: 800,
         duration: 60,
       };
@@ -238,8 +229,7 @@ function getServiceDetails(
     default:
       return {
         serviceId: 'social-growth',
-        serviceName:
-          'Social Growth Sprint',
+        serviceName: 'Social Growth Sprint',
         servicePrice: 300,
         duration: 30,
       };
@@ -253,19 +243,19 @@ function getServiceDetails(
 /**
  * Converts database lead status to dashboard status.
  *
- * Supports both:
- *   New
+ * Supports:
  *   new
- *   Contacted
+ *   New
  *   contacted
- *   Discovery Scheduled
+ *   Contacted
  *   discovery_scheduled
- *   Proposal Sent
+ *   Discovery Scheduled
  *   proposal_sent
- *   Won
+ *   Proposal Sent
  *   won
- *   Lost
+ *   Won
  *   lost
+ *   Lost
  */
 function mapLeadStatus(
   status: unknown,
@@ -305,35 +295,87 @@ function mapLeadStatus(
 
 /**
  * Converts dashboard lead status into
- * a database-friendly value.
+ * the database-friendly value.
+ *
+ * contact_submissions currently stores
+ * values such as:
+ *
+ *   new
+ *   contacted
+ *   discovery_scheduled
+ *   proposal_sent
+ *   won
+ *   lost
  */
 function normalizeLeadStatus(
   status: unknown,
 ): string {
-  switch (
-    String(status ?? 'New')
-      .trim()
-      .toLowerCase()
-  ) {
+  const value = String(
+    status ?? 'New',
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ');
+
+  switch (value) {
     case 'contacted':
-      return 'Contacted';
+      return 'contacted';
 
     case 'discovery scheduled':
-      return 'Discovery Scheduled';
+    case 'discovery call':
+    case 'discovery':
+      return 'discovery_scheduled';
 
     case 'proposal sent':
-      return 'Proposal Sent';
+    case 'proposal':
+      return 'proposal_sent';
 
     case 'won':
-      return 'Won';
+    case 'converted':
+      return 'won';
 
     case 'lost':
-      return 'Lost';
+      return 'lost';
 
     case 'new':
     default:
-      return 'New';
+      return 'new';
   }
+}
+
+/**
+ * Splits the Leads page name into the
+ * contact_submissions first_name / last_name
+ * columns.
+ */
+function splitLeadName(
+  name: string,
+): {
+  first_name: string;
+  last_name: string;
+} {
+  const cleanName = name.trim();
+
+  if (!cleanName) {
+    return {
+      first_name: '',
+      last_name: '',
+    };
+  }
+
+  const parts = cleanName.split(/\s+/);
+
+  if (parts.length === 1) {
+    return {
+      first_name: parts[0],
+      last_name: '',
+    };
+  }
+
+  return {
+    first_name: parts[0],
+    last_name: parts.slice(1).join(' '),
+  };
 }
 
 // ============================================================
@@ -354,21 +396,13 @@ function mapClient(
     ),
     status: r.status,
     monthlyRetainer:
-      Number(
-        r.monthly_retainer ?? 0,
-      ),
+      Number(r.monthly_retainer ?? 0),
     accountManager:
-      safeString(
-        r.account_manager,
-      ),
+      safeString(r.account_manager),
     nextMeeting:
-      safeString(
-        r.next_meeting,
-      ),
+      safeString(r.next_meeting),
     lastActivity:
-      safeString(
-        r.last_activity,
-      ),
+      safeString(r.last_activity),
     industry:
       safeString(r.industry),
     startDate:
@@ -383,53 +417,72 @@ function mapClient(
 /**
  * IMPORTANT LEAD MAPPER
  *
- * This mapper supports:
+ * The Leads dashboard now reads from:
  *
- * budget_range
- * interested_service
+ * public.contact_submissions
+ *
+ * Database columns:
+ *
+ * first_name
+ * last_name
+ * email
+ * brand
+ * service
+ * budget
+ * message
+ * status
+ * id
  * created_at
- * date
- *
- * So the dashboard can still display
- * a lead even when `date` is not present.
  */
 function mapLead(
   r: any,
 ): Lead {
+  const firstName =
+    safeString(r.first_name);
+
+  const lastName =
+    safeString(r.last_name);
+
+  const fullName =
+    `${firstName} ${lastName}`
+      .trim();
+
   const rawDate =
-    r.date ??
     r.created_at ??
+    r.date ??
     r.createdAt ??
     new Date().toISOString();
 
   return {
     id: safeString(r.id),
 
-    name: safeString(
-      r.name,
-    ),
+    name:
+      fullName ||
+      safeString(r.name, 'Unknown'),
 
-    email: safeString(
-      r.email,
-    ),
+    email:
+      safeString(r.email),
 
-    business: safeString(
-      r.business ??
-        r.company,
-    ),
+    business:
+      safeString(
+        r.brand ??
+          r.business ??
+          r.company,
+        'Not specified',
+      ),
 
     budgetRange:
       safeString(
-        r.budget_range ??
-          r.budget ??
+        r.budget ??
+          r.budget_range ??
           r.budgetRange,
         'Not specified',
       ),
 
     interestedService:
       safeString(
-        r.interested_service ??
-          r.service ??
+        r.service ??
+          r.interested_service ??
           r.service_name ??
           r.interestedService,
         'Not specified',
@@ -449,14 +502,10 @@ function mapLead(
       ),
 
     date:
-      safeString(
-        rawDate,
-      ),
+      safeString(rawDate),
 
     status:
-      mapLeadStatus(
-        r.status,
-      ),
+      mapLeadStatus(r.status),
   };
 }
 
@@ -470,9 +519,7 @@ function mapDiscoveryBooking(
     );
 
   const status =
-    mapBookingStatus(
-      r.status,
-    );
+    mapBookingStatus(r.status);
 
   const paymentStatus =
     mapPaymentStatus(
@@ -663,13 +710,15 @@ export async function fetchClients(): Promise<Client[]> {
     );
   }
 
-  const { data, error } =
-    await supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', {
-        ascending: false,
-      });
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('clients')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) {
     console.error(
@@ -689,39 +738,50 @@ export async function fetchClients(): Promise<Client[]> {
 // LEADS
 // ============================================================
 
+/**
+ * IMPORTANT:
+ *
+ * Leads are now fetched from:
+ *
+ * public.contact_submissions
+ *
+ * NOT public.leads.
+ *
+ * This matches your actual Supabase table.
+ */
 export async function fetchLeads(): Promise<Lead[]> {
-  /**
-   * If Supabase is not configured,
-   * use sample data.
-   */
   if (!supabaseConfigured) {
     return Promise.resolve(
       sample.leads,
     );
   }
 
-  /**
-   * IMPORTANT:
-   *
-   * The `leads` table is the actual
-   * source for the admin dashboard.
-   *
-   * We order by created_at so newly
-   * submitted contact forms appear first.
-   */
   const {
     data,
     error,
   } = await supabase
-    .from('leads')
-    .select('*')
+    .from('contact_submissions')
+    .select(
+      `
+        id,
+        first_name,
+        last_name,
+        email,
+        brand,
+        service,
+        budget,
+        message,
+        status,
+        created_at
+      `,
+    )
     .order('created_at', {
       ascending: false,
     });
 
   if (error) {
     console.error(
-      'Failed to fetch leads from Supabase:',
+      'Failed to fetch leads from contact_submissions:',
       error,
     );
 
@@ -729,7 +789,7 @@ export async function fetchLeads(): Promise<Lead[]> {
   }
 
   console.log(
-    'Fetched leads:',
+    'Fetched contact submissions:',
     data,
   );
 
@@ -745,11 +805,13 @@ export async function fetchLeads(): Promise<Lead[]> {
 /**
  * IMPORTANT:
  *
- * The Discovery Calls dashboard uses:
+ * This is your CURRENT Discovery Calls
+ * database source.
  *
+ * DO NOT CHANGE THIS.
+ *
+ * Source:
  * public.discovery_bookings
- *
- * Do NOT use discovery_calls here.
  */
 export async function fetchDiscoveryCalls(): Promise<
   DiscoveryCall[]
@@ -781,9 +843,7 @@ export async function fetchDiscoveryCalls(): Promise<
 
   return (
     data ?? []
-  ).map(
-    mapDiscoveryBooking,
-  );
+  ).map(mapDiscoveryBooking);
 }
 
 /**
@@ -916,12 +976,8 @@ export async function insertDiscoveryCall(
     data,
     error,
   } = await supabase
-    .from(
-      'discovery_bookings',
-    )
-    .insert(
-      insertPayload,
-    )
+    .from('discovery_bookings')
+    .insert(insertPayload)
     .select('*')
     .single();
 
@@ -934,9 +990,7 @@ export async function insertDiscoveryCall(
     throw error;
   }
 
-  return mapDiscoveryBooking(
-    data,
-  );
+  return mapDiscoveryBooking(data);
 }
 
 /**
@@ -979,9 +1033,8 @@ export async function updateDiscoveryCall(
   }
 
   if (
-    Object.keys(
-      updatePayload,
-    ).length === 0
+    Object.keys(updatePayload)
+      .length === 0
   ) {
     throw new Error(
       'No valid fields were provided for update.',
@@ -992,12 +1045,8 @@ export async function updateDiscoveryCall(
     data,
     error,
   } = await supabase
-    .from(
-      'discovery_bookings',
-    )
-    .update(
-      updatePayload,
-    )
+    .from('discovery_bookings')
+    .update(updatePayload)
     .eq('id', id)
     .select('*')
     .single();
@@ -1011,9 +1060,7 @@ export async function updateDiscoveryCall(
     throw error;
   }
 
-  return mapDiscoveryBooking(
-    data,
-  );
+  return mapDiscoveryBooking(data);
 }
 
 export async function deleteDiscoveryCall(
@@ -1022,9 +1069,7 @@ export async function deleteDiscoveryCall(
   const {
     error,
   } = await supabase
-    .from(
-      'discovery_bookings',
-    )
+    .from('discovery_bookings')
     .delete()
     .eq('id', id);
 
@@ -1042,6 +1087,17 @@ export async function deleteDiscoveryCall(
 // LEGACY DISCOVERY CALLS
 // ============================================================
 
+/**
+ * SECOND DISCOVERY CALL DATABASE FETCH
+ *
+ * This intentionally remains in the API.
+ *
+ * Source:
+ * public.discovery_calls
+ *
+ * Do NOT remove if another part of your
+ * application still uses it.
+ */
 export async function fetchLegacyDiscoveryCalls(): Promise<
   DiscoveryCall[]
 > {
@@ -1055,18 +1111,20 @@ export async function fetchLegacyDiscoveryCalls(): Promise<
     data,
     error,
   } = await supabase
-    .from(
-      'discovery_calls',
-    )
+    .from('discovery_calls')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
+    .order('created_at', {
+      ascending: false,
+    });
+
+  if (error) {
+    console.error(
+      'Failed to fetch legacy discovery calls:',
+      error,
     );
 
-  if (error) throw error;
+    throw error;
+  }
 
   return (
     data ?? []
@@ -1112,12 +1170,9 @@ export async function fetchProjects(): Promise<Project[]> {
   } = await supabase
     .from('projects')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1201,24 +1256,17 @@ export async function fetchContentItems(): Promise<
     data,
     error,
   } = await supabase
-    .from(
-      'content_items',
-    )
+    .from('content_items')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
   return (
     data ?? []
-  ).map(
-    mapContentItem,
-  );
+  ).map(mapContentItem);
 }
 
 export async function insertContentItem(
@@ -1236,18 +1284,14 @@ export async function insertContentItem(
     data,
     error,
   } = await supabase
-    .from(
-      'content_items',
-    )
+    .from('content_items')
     .insert(payload)
     .select()
     .single();
 
   if (error) throw error;
 
-  return mapContentItem(
-    data,
-  );
+  return mapContentItem(data);
 }
 
 export async function updateContentItem(
@@ -1258,9 +1302,7 @@ export async function updateContentItem(
     data,
     error,
   } = await supabase
-    .from(
-      'content_items',
-    )
+    .from('content_items')
     .update(payload)
     .eq('id', id)
     .select()
@@ -1268,9 +1310,7 @@ export async function updateContentItem(
 
   if (error) throw error;
 
-  return mapContentItem(
-    data,
-  );
+  return mapContentItem(data);
 }
 
 export async function deleteContentItem(
@@ -1279,9 +1319,7 @@ export async function deleteContentItem(
   const {
     error,
   } = await supabase
-    .from(
-      'content_items',
-    )
+    .from('content_items')
     .delete()
     .eq('id', id);
 
@@ -1305,16 +1343,11 @@ export async function fetchProducts(): Promise<
     data,
     error,
   } = await supabase
-    .from(
-      'digital_products',
-    )
+    .from('digital_products')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1339,9 +1372,7 @@ export async function insertProduct(
     data,
     error,
   } = await supabase
-    .from(
-      'digital_products',
-    )
+    .from('digital_products')
     .insert(payload)
     .select()
     .single();
@@ -1359,9 +1390,7 @@ export async function updateProduct(
     data,
     error,
   } = await supabase
-    .from(
-      'digital_products',
-    )
+    .from('digital_products')
     .update(payload)
     .eq('id', id)
     .select()
@@ -1378,9 +1407,7 @@ export async function deleteProduct(
   const {
     error,
   } = await supabase
-    .from(
-      'digital_products',
-    )
+    .from('digital_products')
     .delete()
     .eq('id', id);
 
@@ -1404,12 +1431,9 @@ export async function fetchOrders(): Promise<Order[]> {
   } = await supabase
     .from('orders')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1490,24 +1514,17 @@ export async function fetchWebsiteRequests(): Promise<
     data,
     error,
   } = await supabase
-    .from(
-      'website_requests',
-    )
+    .from('website_requests')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
   return (
     data ?? []
-  ).map(
-    mapWebsiteRequest,
-  );
+  ).map(mapWebsiteRequest);
 }
 
 export async function insertWebsiteRequest(
@@ -1527,18 +1544,14 @@ export async function insertWebsiteRequest(
     data,
     error,
   } = await supabase
-    .from(
-      'website_requests',
-    )
+    .from('website_requests')
     .insert(payload)
     .select()
     .single();
 
   if (error) throw error;
 
-  return mapWebsiteRequest(
-    data,
-  );
+  return mapWebsiteRequest(data);
 }
 
 export async function updateWebsiteRequest(
@@ -1549,9 +1562,7 @@ export async function updateWebsiteRequest(
     data,
     error,
   } = await supabase
-    .from(
-      'website_requests',
-    )
+    .from('website_requests')
     .update(payload)
     .eq('id', id)
     .select()
@@ -1559,9 +1570,7 @@ export async function updateWebsiteRequest(
 
   if (error) throw error;
 
-  return mapWebsiteRequest(
-    data,
-  );
+  return mapWebsiteRequest(data);
 }
 
 export async function deleteWebsiteRequest(
@@ -1570,9 +1579,7 @@ export async function deleteWebsiteRequest(
   const {
     error,
   } = await supabase
-    .from(
-      'website_requests',
-    )
+    .from('website_requests')
     .delete()
     .eq('id', id);
 
@@ -1594,24 +1601,17 @@ export async function fetchTeam(): Promise<
     data,
     error,
   } = await supabase
-    .from(
-      'team_members',
-    )
+    .from('team_members')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
   return (
     data ?? []
-  ).map(
-    mapTeamMember,
-  );
+  ).map(mapTeamMember);
 }
 
 export async function insertTeamMember(
@@ -1630,9 +1630,7 @@ export async function insertTeamMember(
     data,
     error,
   } = await supabase
-    .from(
-      'team_members',
-    )
+    .from('team_members')
     .insert(payload)
     .select()
     .single();
@@ -1650,9 +1648,7 @@ export async function updateTeamMember(
     data,
     error,
   } = await supabase
-    .from(
-      'team_members',
-    )
+    .from('team_members')
     .update(payload)
     .eq('id', id)
     .select()
@@ -1669,9 +1665,7 @@ export async function deleteTeamMember(
   const {
     error,
   } = await supabase
-    .from(
-      'team_members',
-    )
+    .from('team_members')
     .delete()
     .eq('id', id);
 
@@ -1695,12 +1689,9 @@ export async function fetchInvoices(): Promise<
   } = await supabase
     .from('invoices')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1816,12 +1807,9 @@ export async function fetchActivities(): Promise<
   } = await supabase
     .from('activities')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1843,12 +1831,9 @@ export async function fetchNotifications(): Promise<
   } = await supabase
     .from('notifications')
     .select('*')
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    );
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) throw error;
 
@@ -1997,6 +1982,13 @@ export async function deleteClient(
 // LEAD MUTATIONS
 // ============================================================
 
+/**
+ * Insert a lead into:
+ *
+ * public.contact_submissions
+ *
+ * This matches your actual contact form table.
+ */
 export async function insertLead(
   payload: {
     name: string;
@@ -2009,45 +2001,44 @@ export async function insertLead(
     status?: string;
   },
 ): Promise<Lead> {
-  /**
-   * Make sure the database always receives
-   * a valid dashboard status.
-   */
+  const {
+    first_name,
+    last_name,
+  } = splitLeadName(
+    payload.name,
+  );
+
   const insertPayload = {
-    name:
-      payload.name.trim(),
+    first_name,
+
+    last_name,
 
     email:
       payload.email.trim(),
 
-    business:
+    brand:
       payload.business.trim(),
 
-    budget_range:
-      payload.budget_range?.trim() ||
+    service:
+      payload.interested_service?.trim() ||
       'Not specified',
 
-    interested_service:
-      payload.interested_service?.trim() ||
+    budget:
+      payload.budget_range?.trim() ||
       'Not specified',
 
     message:
       payload.message?.trim() ||
       '',
 
-    source:
-      payload.source?.trim() ||
-      'Website',
-
     status:
       normalizeLeadStatus(
-        payload.status ??
-          'New',
+        payload.status ?? 'New',
       ),
   };
 
   console.log(
-    'Creating lead:',
+    'Creating contact submission:',
     insertPayload,
   );
 
@@ -2055,16 +2046,14 @@ export async function insertLead(
     data,
     error,
   } = await supabase
-    .from('leads')
-    .insert(
-      insertPayload,
-    )
+    .from('contact_submissions')
+    .insert(insertPayload)
     .select('*')
     .single();
 
   if (error) {
     console.error(
-      'Failed to insert lead:',
+      'Failed to insert contact submission:',
       error,
     );
 
@@ -2072,13 +2061,18 @@ export async function insertLead(
   }
 
   console.log(
-    'Lead created:',
+    'Contact submission created:',
     data,
   );
 
   return mapLead(data);
 }
 
+/**
+ * Update a lead in:
+ *
+ * public.contact_submissions
+ */
 export async function updateLead(
   id: string,
   payload: Record<string, unknown>,
@@ -2089,10 +2083,20 @@ export async function updateLead(
   > = {};
 
   if ('name' in payload) {
-    updatePayload.name =
+    const {
+      first_name,
+      last_name,
+    } = splitLeadName(
       safeString(
         payload.name,
-      ).trim();
+      ),
+    );
+
+    updatePayload.first_name =
+      first_name;
+
+    updatePayload.last_name =
+      last_name;
   }
 
   if ('email' in payload) {
@@ -2103,7 +2107,7 @@ export async function updateLead(
   }
 
   if ('business' in payload) {
-    updatePayload.business =
+    updatePayload.brand =
       safeString(
         payload.business,
       ).trim();
@@ -2113,7 +2117,7 @@ export async function updateLead(
     'budget_range' in
     payload
   ) {
-    updatePayload.budget_range =
+    updatePayload.budget =
       safeString(
         payload.budget_range,
       ).trim();
@@ -2123,7 +2127,7 @@ export async function updateLead(
     'interested_service' in
     payload
   ) {
-    updatePayload.interested_service =
+    updatePayload.service =
       safeString(
         payload.interested_service,
       ).trim();
@@ -2136,19 +2140,20 @@ export async function updateLead(
       ).trim();
   }
 
-  if ('source' in payload) {
-    updatePayload.source =
-      safeString(
-        payload.source,
-      ).trim();
-  }
-
   if ('status' in payload) {
     updatePayload.status =
       normalizeLeadStatus(
         payload.status,
       );
   }
+
+  /**
+   * The contact_submissions table
+   * does not currently have a source column.
+   *
+   * Therefore source is intentionally
+   * NOT sent to Supabase.
+   */
 
   if (
     Object.keys(
@@ -2161,7 +2166,7 @@ export async function updateLead(
   }
 
   console.log(
-    'Updating lead:',
+    'Updating contact submission:',
     id,
     updatePayload,
   );
@@ -2170,17 +2175,15 @@ export async function updateLead(
     data,
     error,
   } = await supabase
-    .from('leads')
-    .update(
-      updatePayload,
-    )
+    .from('contact_submissions')
+    .update(updatePayload)
     .eq('id', id)
     .select('*')
     .single();
 
   if (error) {
     console.error(
-      'Failed to update lead:',
+      'Failed to update contact submission:',
       error,
     );
 
@@ -2190,19 +2193,24 @@ export async function updateLead(
   return mapLead(data);
 }
 
+/**
+ * Delete a lead from:
+ *
+ * public.contact_submissions
+ */
 export async function deleteLead(
   id: string,
 ): Promise<void> {
   const {
     error,
   } = await supabase
-    .from('leads')
+    .from('contact_submissions')
     .delete()
     .eq('id', id);
 
   if (error) {
     console.error(
-      'Failed to delete lead:',
+      'Failed to delete contact submission:',
       error,
     );
 
