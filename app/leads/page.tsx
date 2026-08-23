@@ -639,76 +639,73 @@ export default function LeadsPage() {
   // ==========================================================
 
   async function convertToClient(
-    lead: (typeof allLeads)[number],
-  ) {
-    try {
-      await insertClient({
-        name:
-          lead.name,
-
-        company:
-          lead.business,
-
-        email:
-          lead.email,
-
-        phone:
-          '',
-
-        service_package:
-          lead.interestedService ||
-          'Social Starter',
-
-        status:
-          'Onboarding',
-
-        monthly_retainer:
-          0,
-
-        account_manager:
-          '',
-
-        industry:
-          '',
-
-        start_date:
-          new Date()
-            .toISOString()
-            .split('T')[0],
-      });
-
-      await updateLead(
-        lead.id,
-        {
-          status:
-            'Won',
-        },
-      );
-
-      toast.success(
-        lead.name +
-          ' converted to client',
-      );
-
-      refetch();
-    } catch (
-      err: any
-    ) {
-      console.error(
-        'Convert lead error:',
-        err,
-      );
-
+  lead: (typeof allLeads)[number],
+) {
+  try {
+    // Prevent accidentally converting the same lead twice
+    if (lead.status === 'Won') {
       toast.error(
-        'Failed to convert lead',
-        {
-          description:
-            err?.message ??
-            'Unknown error',
-        },
+        'This lead has already been converted to a client.',
       );
+      return;
     }
+
+    // Create the new client record
+await insertClient({
+  name: lead.name,
+  company: lead.business,
+  email: lead.email,
+  phone: '',
+  service_package:
+    lead.interestedService ||
+    'Social Starter',
+  status: 'Onboarding',
+  monthly_retainer: 0,
+  account_manager: '',
+  industry: '',
+  start_date:
+    new Date()
+      .toISOString()
+      .split('T')[0],
+});
+    // After the client is successfully created,
+    // change the lead status to Won.
+    await updateLead(
+      lead.id,
+      {
+        status: 'Won',
+      },
+    );
+
+    toast.success(
+      'Lead converted to client successfully!',
+      {
+        description:
+          lead.name +
+          ' has been added to your Clients.',
+      },
+    );
+
+    // Refresh Leads data
+    refetch();
+  } catch (
+    err: any
+  ) {
+    console.error(
+      'Convert lead error:',
+      err,
+    );
+
+    toast.error(
+      'Failed to convert lead',
+      {
+        description:
+          err?.message ??
+          'Something went wrong while converting this lead.',
+      },
+    );
   }
+}
 
   // ==========================================================
   // RENDER
