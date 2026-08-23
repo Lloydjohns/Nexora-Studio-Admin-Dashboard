@@ -12,6 +12,7 @@ import {
   Filter,
   ArrowRight,
   Trash2,
+  Loader2,
 } from 'lucide-react';
 
 import {
@@ -32,13 +33,9 @@ import {
 } from '@/components/ui/card';
 
 import { Button } from '@/components/ui/button';
-
 import { Input } from '@/components/ui/input';
-
 import { Label } from '@/components/ui/label';
-
 import { Textarea } from '@/components/ui/textarea';
-
 import { Badge } from '@/components/ui/badge';
 
 import {
@@ -137,6 +134,10 @@ const emptyForm: LeadForm = {
 // ============================================================
 
 export default function LeadsPage() {
+  // ==========================================================
+  // LEADS STATE
+  // ==========================================================
+
   const [
     refreshKey,
     setRefreshKey,
@@ -150,10 +151,17 @@ export default function LeadsPage() {
     [refreshKey],
   );
 
-  const refetch = () =>
+  const allLeads = leads ?? [];
+
+  const refetch = () => {
     setRefreshKey(
       (k) => k + 1,
     );
+  };
+
+  // ==========================================================
+  // SEARCH / FILTER
+  // ==========================================================
 
   const [
     search,
@@ -164,6 +172,10 @@ export default function LeadsPage() {
     statusFilter,
     setStatusFilter,
   ] = React.useState('all');
+
+  // ==========================================================
+  // ADD / EDIT LEAD DIALOG
+  // ==========================================================
 
   const [
     open,
@@ -189,8 +201,36 @@ export default function LeadsPage() {
     emptyForm,
   );
 
-  const allLeads =
-    leads ?? [];
+  // ==========================================================
+  // EMAIL COMPOSER STATE
+  // ==========================================================
+
+  const [
+    emailOpen,
+    setEmailOpen,
+  ] = React.useState(false);
+
+  const [
+    emailLead,
+    setEmailLead,
+  ] = React.useState<
+    (typeof allLeads)[number] | null
+  >(null);
+
+  const [
+    emailSubject,
+    setEmailSubject,
+  ] = React.useState('');
+
+  const [
+    emailMessage,
+    setEmailMessage,
+  ] = React.useState('');
+
+  const [
+    sendingEmail,
+    setSendingEmail,
+  ] = React.useState(false);
 
   // ==========================================================
   // FILTERING
@@ -259,19 +299,21 @@ export default function LeadsPage() {
     ).length;
 
   // ==========================================================
-  // ADD
+  // ADD LEAD
   // ==========================================================
 
   function openAdd() {
     setEditId(null);
+
     setForm({
       ...emptyForm,
     });
+
     setOpen(true);
   }
 
   // ==========================================================
-  // EDIT
+  // EDIT LEAD
   // ==========================================================
 
   function openEdit(
@@ -283,7 +325,9 @@ export default function LeadsPage() {
           x.id === id,
       );
 
-    if (!lead) return;
+    if (!lead) {
+      return;
+    }
 
     setEditId(id);
 
@@ -314,7 +358,142 @@ export default function LeadsPage() {
   }
 
   // ==========================================================
-  // SUBMIT
+  // OPEN EMAIL COMPOSER
+  // ==========================================================
+
+  function openEmailComposer(
+    lead: (typeof allLeads)[number],
+  ) {
+    setEmailLead(lead);
+
+    setEmailSubject(
+      'Regarding your inquiry - ' +
+        (lead.interestedService ||
+          'Our Services'),
+    );
+
+    setEmailMessage(
+      'Hi ' +
+        lead.name +
+        ',\n\n' +
+        'Thank you for reaching out to us regarding ' +
+        (lead.interestedService ||
+          'our services') +
+        '.\n\n' +
+        'We would be happy to discuss your project and how we can help.\n\n' +
+        'Best regards,\n' +
+        'Dev|withMe',
+    );
+
+    setEmailOpen(true);
+  }
+
+  // ==========================================================
+  // SEND EMAIL
+  // ==========================================================
+
+  async function handleSendEmail() {
+    if (!emailLead) {
+      toast.error(
+        'No lead selected.',
+      );
+      return;
+    }
+
+    if (!emailLead.email?.trim()) {
+      toast.error(
+        'This lead does not have an email address.',
+      );
+      return;
+    }
+
+    if (!emailSubject.trim()) {
+      toast.error(
+        'Email subject is required.',
+      );
+      return;
+    }
+
+    if (!emailMessage.trim()) {
+      toast.error(
+        'Email message is required.',
+      );
+      return;
+    }
+
+    setSendingEmail(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/send-email',
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            body: JSON.stringify({
+              to: emailLead.email,
+              subject:
+                emailSubject,
+              message:
+                emailMessage,
+            }),
+          },
+        );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            'Failed to send email.',
+        );
+      }
+
+      toast.success(
+        'Email sent successfully!',
+        {
+          description:
+            'Email sent to ' +
+            emailLead.email,
+        },
+      );
+
+      setEmailOpen(false);
+
+      setEmailLead(null);
+
+      setEmailSubject('');
+
+      setEmailMessage('');
+    } catch (
+      err: any
+    ) {
+      console.error(
+        'Send email error:',
+        err,
+      );
+
+      toast.error(
+        'Failed to send email',
+        {
+          description:
+            err?.message ||
+            'Something went wrong while sending the email.',
+        },
+      );
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  // ==========================================================
+  // SUBMIT LEAD
   // ==========================================================
 
   async function handleSubmit(
@@ -368,13 +547,6 @@ export default function LeadsPage() {
         status:
           form.status,
 
-        /**
-         * Kept for compatibility with
-         * the API function.
-         *
-         * contact_submissions does NOT
-         * store source.
-         */
         source:
           'Website',
       };
@@ -429,7 +601,7 @@ export default function LeadsPage() {
   }
 
   // ==========================================================
-  // DELETE
+  // DELETE LEAD
   // ==========================================================
 
   async function handleDelete(
@@ -446,6 +618,11 @@ export default function LeadsPage() {
     } catch (
       err: any
     ) {
+      console.error(
+        'Delete lead error:',
+        err,
+      );
+
       toast.error(
         'Failed to delete lead',
         {
@@ -462,7 +639,7 @@ export default function LeadsPage() {
   // ==========================================================
 
   async function convertToClient(
-    lead: (typeof allLeads)[0],
+    lead: (typeof allLeads)[number],
   ) {
     try {
       await insertClient({
@@ -509,7 +686,8 @@ export default function LeadsPage() {
       );
 
       toast.success(
-        `${lead.name} converted to client`,
+        lead.name +
+          ' converted to client',
       );
 
       refetch();
@@ -547,6 +725,7 @@ export default function LeadsPage() {
           onClick={openAdd}
         >
           <Plus className="mr-1.5 h-4 w-4" />
+
           Add Lead
         </Button>
       </PageHeader>
@@ -577,7 +756,10 @@ export default function LeadsPage() {
 
         <KpiCard
           label="Conversion Rate"
-          value={`${conversionRate}%`}
+          value={
+            conversionRate +
+            '%'
+          }
           delta="+4.2%"
           trend="up"
           icon={TrendingUp}
@@ -711,7 +893,7 @@ export default function LeadsPage() {
                                     </div>
 
                                     <Trash2
-                                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground hover:text-rose-500"
+                                      className="h-3.5 w-3.5 shrink-0 cursor-pointer text-muted-foreground hover:text-rose-500"
                                       onClick={(
                                         e,
                                       ) => {
@@ -745,6 +927,29 @@ export default function LeadsPage() {
                                     }
                                   </p>
 
+                                  {/* COMPOSE EMAIL */}
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 h-7 w-full text-xs"
+                                    onClick={(
+                                      e,
+                                    ) => {
+                                      e.stopPropagation();
+
+                                      openEmailComposer(
+                                        lead,
+                                      );
+                                    }}
+                                  >
+                                    <Mail className="mr-1 h-3 w-3" />
+
+                                    Compose Email
+                                  </Button>
+
+                                  {/* CONVERT TO CLIENT */}
+
                                   {stage !==
                                     'Won' &&
                                     stage !==
@@ -752,7 +957,7 @@ export default function LeadsPage() {
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="mt-2 h-7 w-full text-xs"
+                                        className="mt-1 h-7 w-full text-xs"
                                         onClick={(
                                           e,
                                         ) => {
@@ -876,6 +1081,10 @@ export default function LeadsPage() {
                   <TableHead>
                     Status
                   </TableHead>
+
+                  <TableHead className="text-right">
+                    Email
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -890,7 +1099,7 @@ export default function LeadsPage() {
                       >
                         {Array.from(
                           {
-                            length: 7,
+                            length: 8,
                           },
                         ).map(
                           (
@@ -986,6 +1195,27 @@ export default function LeadsPage() {
                             }
                           />
                         </TableCell>
+
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={(
+                              e,
+                            ) => {
+                              e.stopPropagation();
+
+                              openEmailComposer(
+                                lead,
+                              );
+                            }}
+                          >
+                            <Mail className="mr-1.5 h-4 w-4" />
+
+                            Email
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ),
                   )
@@ -1023,7 +1253,9 @@ export default function LeadsPage() {
               </p>
 
               <p className="text-2xl font-bold tabular-nums">
-                {allLeads.length}
+                {
+                  allLeads.length
+                }
               </p>
             </div>
 
@@ -1071,7 +1303,7 @@ export default function LeadsPage() {
       </Card>
 
       {/* ======================================================
-          ADD / EDIT DIALOG
+          ADD / EDIT LEAD DIALOG
       ====================================================== */}
 
       <Dialog
@@ -1113,9 +1345,9 @@ export default function LeadsPage() {
                   ) =>
                     setForm({
                       ...form,
-                      name: e
-                        .target
-                        .value,
+                      name:
+                        e.target
+                          .value,
                     })
                   }
                   required
@@ -1338,6 +1570,7 @@ export default function LeadsPage() {
                   className="mr-auto"
                 >
                   <Trash2 className="mr-1.5 h-4 w-4" />
+
                   Delete
                 </Button>
               )}
@@ -1368,6 +1601,158 @@ export default function LeadsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+          EMAIL COMPOSER DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={emailOpen}
+        onOpenChange={(value) => {
+          if (!sendingEmail) {
+            setEmailOpen(value);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+
+              Compose Email
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* RECIPIENT */}
+
+            <div className="space-y-2">
+              <Label htmlFor="email-recipient">
+                To
+              </Label>
+
+              <Input
+                id="email-recipient"
+                value={
+                  emailLead?.email ||
+                  ''
+                }
+                disabled
+              />
+            </div>
+
+            {/* LEAD INFORMATION */}
+
+            {emailLead && (
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Sending to
+                </p>
+
+                <p className="text-sm font-semibold">
+                  {
+                    emailLead.name
+                  }
+                </p>
+
+                {emailLead.business && (
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      emailLead.business
+                    }
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* SUBJECT */}
+
+            <div className="space-y-2">
+              <Label htmlFor="email-subject">
+                Subject
+              </Label>
+
+              <Input
+                id="email-subject"
+                placeholder="Enter email subject..."
+                value={
+                  emailSubject
+                }
+                onChange={(e) =>
+                  setEmailSubject(
+                    e.target.value,
+                  )
+                }
+              />
+            </div>
+
+            {/* MESSAGE */}
+
+            <div className="space-y-2">
+              <Label htmlFor="email-message">
+                Message
+              </Label>
+
+              <Textarea
+                id="email-message"
+                placeholder="Write your email..."
+                value={
+                  emailMessage
+                }
+                onChange={(e) =>
+                  setEmailMessage(
+                    e.target.value,
+                  )
+                }
+                rows={10}
+              />
+            </div>
+          </div>
+
+          {/* EMAIL FOOTER */}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                sendingEmail
+              }
+              onClick={() => {
+                setEmailOpen(
+                  false,
+                );
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              disabled={
+                sendingEmail
+              }
+              onClick={
+                handleSendEmail
+              }
+            >
+              {sendingEmail ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="mr-2 h-4 w-4" />
+
+                  Send Email
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardShell>
