@@ -13,6 +13,8 @@ import {
   TrendingUp,
   DollarSign,
   Trash2,
+  Target,
+  ArrowRight,
 } from 'lucide-react';
 
 import { motion } from 'framer-motion';
@@ -123,6 +125,60 @@ const callTypes: CallType[] = [
 ];
 
 // ============================================================
+// DISCOVERY OUTCOMES
+// ============================================================
+
+const outcomeOptions = [
+  {
+    value: 'Proposal Sent — Awaiting Decision',
+    label: 'Proposal Sent — Awaiting Decision',
+    description: 'Client is interested and waiting to review the proposal.',
+  },
+
+  {
+    value: 'Client Accepted — Project Won',
+    label: 'Client Accepted — Project Won',
+    description: 'Client accepted the offer and is ready to proceed.',
+  },
+
+  {
+    value: 'Follow-up Required',
+    label: 'Follow-up Required',
+    description: 'Client needs another conversation before deciding.',
+  },
+
+  {
+    value: 'Paid & Ready to Start',
+    label: 'Paid & Ready to Start',
+    description: 'Payment is complete and the project can begin.',
+  },
+
+  {
+    value: 'Not Interested',
+    label: 'Not Interested',
+    description: 'Client decided not to proceed.',
+  },
+
+  {
+    value: 'Not a Good Fit',
+    label: 'Not a Good Fit',
+    description: 'The service is not suitable for the client.',
+  },
+
+  {
+    value: 'Call Rescheduled',
+    label: 'Call Rescheduled',
+    description: 'The discovery call needs to happen at another time.',
+  },
+
+  {
+    value: 'No Show',
+    label: 'No Show',
+    description: 'Client did not attend the scheduled call.',
+  },
+];
+
+// ============================================================
 // PAGE
 // ============================================================
 
@@ -141,10 +197,25 @@ export default function DiscoveryCallsPage() {
   const refetch = () =>
     setRefreshKey((current) => current + 1);
 
+  // ==========================================================
+  // BOOKING DIALOG
+  // ==========================================================
+
   const [open, setOpen] =
     React.useState(false);
 
+  // ==========================================================
+  // NOTES DIALOG
+  // ==========================================================
+
   const [notesOpen, setNotesOpen] =
+    React.useState(false);
+
+  // ==========================================================
+  // COMPLETE CALL DIALOG
+  // ==========================================================
+
+  const [completeOpen, setCompleteOpen] =
     React.useState(false);
 
   const [editingCall, setEditingCall] =
@@ -153,11 +224,24 @@ export default function DiscoveryCallsPage() {
   const [notesText, setNotesText] =
     React.useState('');
 
+  const [outcome, setOutcome] =
+    React.useState('');
+
+  const [nextStep, setNextStep] =
+    React.useState('');
+
   const [savingNotes, setSavingNotes] =
+    React.useState(false);
+
+  const [savingOutcome, setSavingOutcome] =
     React.useState(false);
 
   const [submitting, setSubmitting] =
     React.useState(false);
+
+  // ==========================================================
+  // BOOKING FORM
+  // ==========================================================
 
   const [form, setForm] =
     React.useState({
@@ -188,9 +272,9 @@ export default function DiscoveryCallsPage() {
       call.paymentStatus === 'Paid',
   ).length;
 
-  // ============================================================
-  // RESET
-  // ============================================================
+  // ==========================================================
+  // RESET FORM
+  // ==========================================================
 
   function resetForm() {
     setForm({
@@ -205,9 +289,9 @@ export default function DiscoveryCallsPage() {
     });
   }
 
-  // ============================================================
+  // ==========================================================
   // ADMIN BOOKING
-  // ============================================================
+  // ==========================================================
 
   async function handleSubmit(
     e: React.FormEvent,
@@ -218,6 +302,7 @@ export default function DiscoveryCallsPage() {
       toast.error(
         'Please enter the client name.',
       );
+
       return;
     }
 
@@ -275,9 +360,9 @@ export default function DiscoveryCallsPage() {
     }
   }
 
-  // ============================================================
+  // ==========================================================
   // NOTES
-  // ============================================================
+  // ==========================================================
 
   function openNotes(
     call: DiscoveryCall,
@@ -331,48 +416,94 @@ export default function DiscoveryCallsPage() {
     }
   }
 
-  // ============================================================
-  // COMPLETE / PROPOSAL
-  // ============================================================
+  // ==========================================================
+  // COMPLETE CALL
+  // ==========================================================
 
-  async function handleGenerateProposal(
+  function openCompleteCall(
     call: DiscoveryCall,
   ) {
+    setEditingCall(call);
+
+    setOutcome(
+      call.outcome || '',
+    );
+
+    setNextStep('');
+
+    setCompleteOpen(true);
+  }
+
+  async function handleCompleteCall(
+    e: React.FormEvent,
+  ) {
+    e.preventDefault();
+
+    if (!editingCall) return;
+
+    if (!outcome) {
+      toast.error(
+        'Please select an outcome.',
+      );
+
+      return;
+    }
+
+    setSavingOutcome(true);
+
     try {
+      const finalOutcome =
+        nextStep.trim()
+          ? `${outcome} | Next Step: ${nextStep.trim()}`
+          : outcome;
+
       await updateDiscoveryCall(
-        call.id,
+        editingCall.id,
         {
           status: 'Completed',
-
-          outcome:
-            'Proposal generated and sent to client',
+          outcome: finalOutcome,
         },
       );
 
       toast.success(
-        'Proposal generated.',
+        'Discovery call completed.',
         {
           description:
-            `${call.clientName}'s call has been marked as completed.`,
+            `${editingCall.clientName}'s call has been updated.`,
         },
       );
+
+      setCompleteOpen(false);
+
+      setEditingCall(null);
+
+      setOutcome('');
+
+      setNextStep('');
 
       refetch();
     } catch (err: any) {
+      console.error(
+        'COMPLETE CALL ERROR:',
+        err,
+      );
+
       toast.error(
-        'Failed to generate proposal',
+        'Failed to complete call',
         {
           description:
             err?.message ||
-            'Unable to update booking.',
+            'Unable to save call outcome.',
         },
       );
+    } finally {
+      setSavingOutcome(false);
     }
   }
 
-  // ============================================================
+  // ==========================================================
   // DELETE
-  // ============================================================
+  // ==========================================================
 
   async function handleDelete(
     id: string,
@@ -397,9 +528,9 @@ export default function DiscoveryCallsPage() {
     }
   }
 
-  // ============================================================
+  // ==========================================================
   // DATE FORMAT
-  // ============================================================
+  // ==========================================================
 
   function formatDate(
     value: string,
@@ -439,15 +570,51 @@ export default function DiscoveryCallsPage() {
     );
   }
 
-  // ============================================================
+  // ==========================================================
+  // OUTCOME DISPLAY
+  // ==========================================================
+
+  function formatOutcome(
+    value: string,
+  ) {
+    if (!value) {
+      return {
+        outcome: 'No outcome recorded.',
+        nextStep: '',
+      };
+    }
+
+    const separator =
+      ' | Next Step: ';
+
+    if (
+      value.includes(separator)
+    ) {
+      const parts =
+        value.split(separator);
+
+      return {
+        outcome: parts[0],
+        nextStep:
+          parts.slice(1).join(separator),
+      };
+    }
+
+    return {
+      outcome: value,
+      nextStep: '',
+    };
+  }
+
+  // ==========================================================
   // RENDER
-  // ============================================================
+  // ==========================================================
 
   return (
     <DashboardShell>
       <PageHeader
         title="Discovery Calls"
-        description="Manage booked strategy sessions and website roadmap calls"
+        description="Manage booked strategy sessions, client consultations, and discovery outcomes"
       >
         <Button
           size="sm"
@@ -668,6 +835,8 @@ export default function DiscoveryCallsPage() {
                             />
                           </div>
 
+                          {/* DATE */}
+
                           <div className="mt-4 flex items-center gap-2 text-sm">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
 
@@ -685,6 +854,8 @@ export default function DiscoveryCallsPage() {
                             </span>
                           </div>
 
+                          {/* NOTES */}
+
                           <div className="mt-3 rounded-lg bg-muted/50 p-3">
                             <p className="text-xs font-medium text-muted-foreground">
                               Notes
@@ -695,6 +866,8 @@ export default function DiscoveryCallsPage() {
                                 'No notes provided.'}
                             </p>
                           </div>
+
+                          {/* ACTIONS */}
 
                           <div className="mt-4 flex gap-2">
                             <Button
@@ -708,6 +881,7 @@ export default function DiscoveryCallsPage() {
                               }
                             >
                               <FileText className="mr-1.5 h-3.5 w-3.5" />
+
                               Add Notes
                             </Button>
 
@@ -715,12 +889,14 @@ export default function DiscoveryCallsPage() {
                               size="sm"
                               className="flex-1"
                               onClick={() =>
-                                handleGenerateProposal(
+                                openCompleteCall(
                                   call,
                                 )
                               }
                             >
-                              Generate Proposal
+                              <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
+
+                              Complete Call
                             </Button>
 
                             <Button
@@ -770,74 +946,122 @@ export default function DiscoveryCallsPage() {
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {completed.map(
-                (call, index) => (
-                  <motion.div
-                    key={call.id}
-                    initial={{
-                      opacity: 0,
-                      y: 10,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                    }}
-                    transition={{
-                      delay:
-                        index * 0.05,
-                    }}
-                  >
-                    <Card>
-                      <CardContent className="p-5">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="text-sm font-semibold">
-                              {call.clientName}
-                            </p>
+                (call, index) => {
+                  const result =
+                    formatOutcome(
+                      call.outcome ||
+                        '',
+                    );
 
-                            <p className="text-xs text-muted-foreground">
-                              {call.type} ·{' '}
-                              {formatDate(
-                                call.date,
-                              )}
+                  return (
+                    <motion.div
+                      key={call.id}
+                      initial={{
+                        opacity: 0,
+                        y: 10,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                      }}
+                      transition={{
+                        delay:
+                          index * 0.05,
+                      }}
+                    >
+                      <Card>
+                        <CardContent className="p-5">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-sm font-semibold">
+                                {call.clientName}
+                              </p>
+
+                              <p className="text-xs text-muted-foreground">
+                                {call.type} ·{' '}
+                                {formatDate(
+                                  call.date,
+                                )}
+                              </p>
+                            </div>
+
+                            <StatusBadge
+                              status={
+                                call.status
+                              }
+                            />
+                          </div>
+
+                          {/* OUTCOME */}
+
+                          <div className="mt-3 rounded-lg bg-emerald-500/5 p-3">
+                            <div className="flex items-center gap-2">
+                              <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+
+                              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                Outcome
+                              </p>
+                            </div>
+
+                            <p className="mt-1 text-sm font-medium">
+                              {result.outcome}
                             </p>
                           </div>
 
-                          <StatusBadge
-                            status={
-                              call.status
-                            }
-                          />
-                        </div>
+                          {/* NEXT STEP */}
 
-                        <div className="mt-3 rounded-lg bg-emerald-500/5 p-3">
-                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            Outcome
-                          </p>
+                          {result.nextStep && (
+                            <div className="mt-3 rounded-lg bg-blue-500/5 p-3">
+                              <div className="flex items-center gap-2">
+                                <ArrowRight className="h-4 w-4 text-blue-600 dark:text-blue-400" />
 
-                          <p className="mt-1 text-sm">
-                            {call.outcome ||
-                              'No outcome recorded.'}
-                          </p>
-                        </div>
+                                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                                  Next Step
+                                </p>
+                              </div>
 
-                        <div className="mt-4 flex justify-end">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              handleDelete(
-                                call.id,
-                              )
-                            }
-                          >
-                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                            Delete
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ),
+                              <p className="mt-1 text-sm">
+                                {result.nextStep}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* NOTES */}
+
+                          {call.notes && (
+                            <div className="mt-3 rounded-lg bg-muted/50 p-3">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Notes
+                              </p>
+
+                              <p className="mt-1 text-sm">
+                                {call.notes}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* ACTIONS */}
+
+                          <div className="mt-4 flex justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleDelete(
+                                  call.id,
+                                )
+                              }
+                            >
+                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+
+                              Delete
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                },
               )}
             </div>
           )}
@@ -863,6 +1087,8 @@ export default function DiscoveryCallsPage() {
             onSubmit={handleSubmit}
             className="space-y-4"
           >
+            {/* CLIENT */}
+
             <div className="space-y-2">
               <Label htmlFor="clientName">
                 Client Name
@@ -884,6 +1110,8 @@ export default function DiscoveryCallsPage() {
                 required
               />
             </div>
+
+            {/* TYPE + DURATION */}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -943,6 +1171,8 @@ export default function DiscoveryCallsPage() {
               </div>
             </div>
 
+            {/* DATE */}
+
             <div className="space-y-2">
               <Label htmlFor="date">
                 Date & Time
@@ -961,6 +1191,8 @@ export default function DiscoveryCallsPage() {
                 }
               />
             </div>
+
+            {/* STATUS + PAYMENT */}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1042,6 +1274,8 @@ export default function DiscoveryCallsPage() {
               </div>
             </div>
 
+            {/* NOTES */}
+
             <div className="space-y-2">
               <Label htmlFor="notes">
                 Notes
@@ -1062,27 +1296,55 @@ export default function DiscoveryCallsPage() {
               />
             </div>
 
+            {/* OUTCOME */}
+
             <div className="space-y-2">
-              <Label htmlFor="outcome">
-                Outcome
+              <Label>
+                Initial Outcome
               </Label>
 
-              <Textarea
-                id="outcome"
+              <Select
                 value={
-                  form.outcome
+                  form.outcome || ''
                 }
-                onChange={(e) =>
+                onValueChange={(
+                  value,
+                ) =>
                   setForm({
                     ...form,
                     outcome:
-                      e.target.value,
+                      value,
                   })
                 }
-                placeholder="Result of the call..."
-                rows={2}
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select outcome (optional)" />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {outcomeOptions.map(
+                    (option) => (
+                      <SelectItem
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+
+              <p className="text-xs text-muted-foreground">
+                You can also record the final outcome after the call using "Complete Call".
+              </p>
             </div>
+
+            {/* FOOTER */}
 
             <DialogFooter>
               <Button
@@ -1144,7 +1406,7 @@ export default function DiscoveryCallsPage() {
               <Textarea
                 id="meeting-notes"
                 rows={6}
-                placeholder="Key discussion points, action items, next steps..."
+                placeholder="Key discussion points, action items, client needs..."
                 value={notesText}
                 onChange={(e) =>
                   setNotesText(
@@ -1176,6 +1438,179 @@ export default function DiscoveryCallsPage() {
                 {savingNotes
                   ? 'Saving...'
                   : 'Save Notes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+          COMPLETE CALL DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={completeOpen}
+        onOpenChange={
+          setCompleteOpen
+        }
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Complete Discovery Call
+            </DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={
+              handleCompleteCall
+            }
+            className="space-y-5"
+          >
+            {/* CLIENT */}
+
+            <div className="rounded-lg bg-muted/50 p-4">
+              <p className="text-sm font-semibold">
+                {
+                  editingCall?.clientName
+                }
+              </p>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                {editingCall?.type}
+                {' · '}
+                {editingCall?.duration}
+                {' min'}
+              </p>
+            </div>
+
+            {/* OUTCOME */}
+
+            <div className="space-y-2">
+              <Label>
+                Call Outcome
+              </Label>
+
+              <Select
+                value={outcome}
+                onValueChange={
+                  setOutcome
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="What happened after the call?" />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {outcomeOptions.map(
+                    (option) => (
+                      <SelectItem
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        <div>
+                          <p>
+                            {
+                              option.label
+                            }
+                          </p>
+
+                          <p className="text-xs text-muted-foreground">
+                            {
+                              option.description
+                            }
+                          </p>
+                        </div>
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* NEXT STEP */}
+
+            <div className="space-y-2">
+              <Label htmlFor="next-step">
+                Next Step / Follow-up
+              </Label>
+
+              <Textarea
+                id="next-step"
+                rows={3}
+                value={
+                  nextStep
+                }
+                onChange={(e) =>
+                  setNextStep(
+                    e.target.value,
+                  )
+                }
+                placeholder="e.g. Send proposal and follow up with client after 3 days."
+              />
+
+              <p className="text-xs text-muted-foreground">
+                This will be saved together with the outcome.
+              </p>
+            </div>
+
+            {/* SUMMARY */}
+
+            {outcome && (
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-emerald-600" />
+
+                  <p className="text-sm font-medium">
+                    Outcome Preview
+                  </p>
+                </div>
+
+                <p className="mt-2 text-sm">
+                  {outcome}
+                </p>
+
+                {nextStep.trim() && (
+                  <div className="mt-2 flex items-start gap-2">
+                    <ArrowRight className="mt-0.5 h-4 w-4 text-blue-600" />
+
+                    <p className="text-sm text-muted-foreground">
+                      {nextStep}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* FOOTER */}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setCompleteOpen(
+                    false,
+                  )
+                }
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="submit"
+                disabled={
+                  savingOutcome ||
+                  !outcome
+                }
+              >
+                {savingOutcome
+                  ? 'Saving...'
+                  : 'Complete Call'}
               </Button>
             </DialogFooter>
           </form>
