@@ -364,6 +364,36 @@ export default function ClientsPage() {
   const allContent = contentItems ?? [];
   const allInvoices = invoices ?? [];
 
+  // ============================================================
+// RETAINER KPI CALCULATIONS
+// ============================================================
+
+const activeClients = allClients.filter(
+  (client) => client.status === 'Active'
+);
+
+const activeRetainersTotal = activeClients.reduce(
+  (total, client) => total + (Number(client.monthlyRetainer) || 0),
+  0
+);
+
+const averageRetainer =
+  activeClients.length > 0
+    ? activeRetainersTotal / activeClients.length
+    : 0;
+
+function formatKpiPeso(amount: number) {
+  if (amount >= 1_000_000) {
+    return `₱${(amount / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (amount >= 1_000) {
+    return `₱${Math.round(amount / 1_000)}K`;
+  }
+
+  return `₱${Math.round(amount).toLocaleString()}`;
+}
+
   const filtered = allClients.filter(
     (c) => {
       const query =
@@ -665,7 +695,7 @@ export default function ClientsPage() {
 
         <KpiCard
           label="Active Retainers"
-          value="₱185K"
+          value={formatKpiPeso(activeRetainersTotal)}
           delta="+₱20K"
           trend="up"
           icon={DollarSign}
@@ -675,7 +705,7 @@ export default function ClientsPage() {
 
         <KpiCard
           label="Avg. Retainer"
-          value="₱28K"
+          value={formatKpiPeso(averageRetainer)}
           delta="+₱2K"
           trend="up"
           icon={TrendingUp}
