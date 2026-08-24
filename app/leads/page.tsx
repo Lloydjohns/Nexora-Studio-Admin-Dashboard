@@ -109,6 +109,59 @@ const budgetOptions = [
   '₱60,000+',
 ];
 
+const leadServiceOptions = [
+  'Social Media Management',
+  'Digital Products',
+  'Custom Projects',
+  'Just Saying Hi',
+] as const;
+
+type LeadService =
+  (typeof leadServiceOptions)[number];
+
+function normalizeLeadService(
+  service: string | null | undefined,
+): LeadService | null {
+  const value = (service ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (!value) {
+    return null;
+  }
+
+  if (
+    value === 'social media management' ||
+    value.includes('social media')
+  ) {
+    return 'Social Media Management';
+  }
+
+  if (
+    value === 'digital products' ||
+    value.includes('digital product')
+  ) {
+    return 'Digital Products';
+  }
+
+  if (
+    value === 'custom projects' ||
+    value.includes('custom project')
+  ) {
+    return 'Custom Projects';
+  }
+
+  if (
+    value === 'just saying hi' ||
+    value.includes('saying hi') ||
+    value.includes('just saying')
+  ) {
+    return 'Just Saying Hi';
+  }
+
+  return null;
+}
+
 interface LeadForm {
   name: string;
   email: string;
@@ -548,7 +601,8 @@ export default function LeadsPage() {
           form.status,
 
         source:
-          'Website',
+          form.interestedService ||
+          'Just Saying Hi',
       };
 
       if (editId) {
@@ -706,6 +760,26 @@ await insertClient({
     );
   }
 }
+
+  // ==========================================================
+  // LEAD SERVICE BREAKDOWN
+  // ==========================================================
+
+  const serviceCounts = React.useMemo(() => {
+    return leadServiceOptions.reduce(
+      (counts, service) => {
+        counts[service] = allLeads.filter(
+          (lead) =>
+            normalizeLeadService(
+              lead.interestedService,
+            ) === service,
+        ).length;
+
+        return counts;
+      },
+      {} as Record<LeadService, number>,
+    );
+  }, [allLeads]);
 
   // ==========================================================
   // RENDER
@@ -908,7 +982,13 @@ await insertClient({
                                       variant="outline"
                                       className="text-[10px]"
                                     >
-                                      Website
+                                      {
+                                        normalizeLeadService(
+                                          lead.interestedService,
+                                        ) ||
+                                        lead.interestedService ||
+                                        'Just Saying Hi'
+                                      }
                                     </Badge>
 
                                     <span className="text-[10px] text-muted-foreground">
@@ -1166,7 +1246,13 @@ await insertClient({
                             variant="outline"
                             className="text-[10px]"
                           >
-                            Website
+                            {
+                              normalizeLeadService(
+                                lead.interestedService,
+                              ) ||
+                              lead.interestedService ||
+                              'Just Saying Hi'
+                            }
                           </Badge>
                         </TableCell>
 
@@ -1243,58 +1329,21 @@ await insertClient({
         </CardHeader>
 
         <CardContent>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">
-                Website
-              </p>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {leadServiceOptions.map((service) => (
+              <div
+                key={service}
+                className="rounded-lg border p-3"
+              >
+                <p className="text-xs text-muted-foreground">
+                  {service}
+                </p>
 
-              <p className="text-2xl font-bold tabular-nums">
-                {
-                  allLeads.length
-                }
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">
-                Instagram
-              </p>
-
-              <p className="text-2xl font-bold tabular-nums">
-                0
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">
-                Facebook
-              </p>
-
-              <p className="text-2xl font-bold tabular-nums">
-                0
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">
-                TikTok
-              </p>
-
-              <p className="text-2xl font-bold tabular-nums">
-                0
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">
-                Referral
-              </p>
-
-              <p className="text-2xl font-bold tabular-nums">
-                0
-              </p>
-            </div>
+                <p className="text-2xl font-bold tabular-nums">
+                  {serviceCounts[service]}
+                </p>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
