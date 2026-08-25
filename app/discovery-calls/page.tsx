@@ -1,7 +1,7 @@
-'use client';
+'use client'
 
-import * as React from 'react';
-import CalBooking from '@/components/cal-booking';
+import * as React from 'react'
+import CalBooking from '@/components/cal-booking'
 
 import {
   Plus,
@@ -17,33 +17,46 @@ import {
   Target,
   ArrowRight,
   ExternalLink,
-} from 'lucide-react';
+  Users,
+  Mail,
+  Send,
+  Loader2,
+  Eye,
+  Sparkles,
+  Building2,
+  Globe,
+  Phone,
+  Wallet,
+  Timer,
+  User,
+  CheckCircle2,
+} from 'lucide-react'
 
-import { motion } from 'framer-motion';
+import { motion } from 'framer-motion'
 
 import {
   DashboardShell,
   PageHeader,
-} from '@/components/dashboard-shell';
+} from '@/components/dashboard-shell'
 
 import {
   KpiCard,
   StatusBadge,
-} from '@/components/shared';
+} from '@/components/shared'
 
 import {
   Card,
   CardContent,
-} from '@/components/ui/card';
+} from '@/components/ui/card'
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button'
 
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@/components/ui/tabs';
+} from '@/components/ui/tabs'
 
 import {
   Dialog,
@@ -51,11 +64,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@/components/ui/dialog'
 
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'
 
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'
 
 import {
   Select,
@@ -63,31 +76,78 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@/components/ui/select'
 
 import {
   fetchDiscoveryCalls,
   updateDiscoveryCall,
   deleteDiscoveryCall,
-} from '@/lib/api';
+} from '@/lib/api'
 
 import {
   type CallType,
   type DiscoveryCall,
-} from '@/lib/data';
+} from '@/lib/data'
 
-import { useFetch } from '@/hooks/use-fetch';
+import { useFetch } from '@/hooks/use-fetch'
 
-import { toast } from 'sonner';
+import { toast } from 'sonner'
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'
+
+import { supabase } from '@/lib/supabase'
 
 // ============================================================
-// CAL.COM BOOKING URL
+// CAL.COM EVENTS
+// ============================================================
+
+type CalEvent = {
+  id: string
+  name: string
+  duration: string
+  url: string
+  price: number
+  description: string
+}
+
+const calEvents: CalEvent[] = [
+  {
+    id: 'social-growth-sprint',
+    name: 'Social Growth Sprint',
+    duration: '30 min',
+    url: 'https://cal.com/social-growth-sprint-30-min',
+    price: 300,
+    description:
+      'Best for brands that want clearer content direction.',
+  },
+
+  {
+    id: 'brand-clarity-session',
+    name: 'Brand Clarity Session',
+    duration: '45 min',
+    url: 'https://cal.com/brand-clarity-session-45-min',
+    price: 500,
+    description:
+      'A focused call for identity, messaging, and campaign angles.',
+  },
+
+  {
+    id: 'website-roadmap-call',
+    name: 'Website Roadmap Call',
+    duration: '60 min',
+    url: 'https://cal.com/website-roadmap-call-60-min',
+    price: 800,
+    description:
+      'For businesses planning a new website or digital launch.',
+  },
+]
+
+// ============================================================
+// CAL.COM QUICK BOOKING
 // ============================================================
 
 const CAL_BOOKING_URL =
-  'https://cal.com/nexora-studio-bookstatus';
+  'https://cal.com/social-growth-sprint-30-min'
 
 // ============================================================
 // CALL TYPES
@@ -96,9 +156,9 @@ const CAL_BOOKING_URL =
 const callTypeMeta: Record<
   CallType,
   {
-    duration: string;
-    color: string;
-    icon: React.ComponentType<{ className?: string }>;
+    duration: string
+    color: string
+    icon: React.ComponentType<{ className?: string }>
   }
 > = {
   'Social Growth Sprint': {
@@ -118,13 +178,13 @@ const callTypeMeta: Record<
     color: 'from-emerald-500 to-teal-500',
     icon: Video,
   },
-};
+}
 
 const callTypes: CallType[] = [
   'Social Growth Sprint',
   'Brand Clarity Session',
   'Website Roadmap Call',
-];
+]
 
 // ============================================================
 // DISCOVERY OUTCOMES
@@ -186,15 +246,53 @@ const outcomeOptions = [
     description:
       'Client did not attend the scheduled call.',
   },
-];
+]
+
+// ============================================================
+// WEBSITE BOOKING TYPE
+// ============================================================
+
+type WebsiteBooking = {
+  id: string
+
+  name: string
+  email: string
+
+  phone?: string | null
+  company?: string | null
+  website?: string | null
+
+  service_id?: string | null
+  service_name?: string | null
+  service_price?: number | null
+
+  date?: string | null
+  time?: string | null
+
+  contact_method?: string | null
+
+  budget?: string | null
+  timeline?: string | null
+
+  goals?: string[] | null
+  notes?: string | null
+
+  status?: string | null
+
+  created_at?: string | null
+}
 
 // ============================================================
 // PAGE
 // ============================================================
 
 export default function DiscoveryCallsPage() {
+  // ==========================================================
+  // DISCOVERY CALLS
+  // ==========================================================
+
   const [refreshKey, setRefreshKey] =
-    React.useState(0);
+    React.useState(0)
 
   const {
     data: discoveryCalls,
@@ -202,81 +300,408 @@ export default function DiscoveryCallsPage() {
   } = useFetch(
     fetchDiscoveryCalls,
     [refreshKey],
-  );
+  )
 
   const refetch = () =>
     setRefreshKey(
       (current) => current + 1,
-    );
+    )
+
+  // ==========================================================
+  // WEBSITE BOOKING REQUESTS
+  // ==========================================================
+
+  const [bookingRequests, setBookingRequests] =
+    React.useState<WebsiteBooking[]>([])
+
+  const [bookingRequestsLoading, setBookingRequestsLoading] =
+    React.useState(true)
+
+  const [bookingRequestsError, setBookingRequestsError] =
+    React.useState('')
+
+  // ==========================================================
+  // SELECTED CLIENT
+  // ==========================================================
+
+  const [selectedClient, setSelectedClient] =
+    React.useState<WebsiteBooking | null>(null)
+
+  const [clientDetailsOpen, setClientDetailsOpen] =
+    React.useState(false)
+
+  const [proceedOpen, setProceedOpen] =
+    React.useState(false)
+
+  // ==========================================================
+  // SELECTED CAL EVENT
+  // ==========================================================
+
+  const [selectedCalEvent, setSelectedCalEvent] =
+    React.useState<CalEvent>(
+      calEvents[0],
+    )
+
+  const [sendingBookingEmail, setSendingBookingEmail] =
+    React.useState(false)
 
   // ==========================================================
   // CAL.COM DIALOG
   // ==========================================================
 
   const [bookingOpen, setBookingOpen] =
-    React.useState(false);
+    React.useState(false)
 
   // ==========================================================
   // NOTES DIALOG
   // ==========================================================
 
   const [notesOpen, setNotesOpen] =
-    React.useState(false);
+    React.useState(false)
 
   // ==========================================================
   // COMPLETE CALL DIALOG
   // ==========================================================
 
   const [completeOpen, setCompleteOpen] =
-    React.useState(false);
+    React.useState(false)
 
   const [editingCall, setEditingCall] =
     React.useState<DiscoveryCall | null>(
       null,
-    );
+    )
 
   const [notesText, setNotesText] =
-    React.useState('');
+    React.useState('')
 
   const [outcome, setOutcome] =
-    React.useState('');
+    React.useState('')
 
   const [nextStep, setNextStep] =
-    React.useState('');
+    React.useState('')
 
   const [savingNotes, setSavingNotes] =
-    React.useState(false);
+    React.useState(false)
 
   const [savingOutcome, setSavingOutcome] =
-    React.useState(false);
+    React.useState(false)
+
+  // ==========================================================
+  // FETCH WEBSITE BOOKING REQUESTS
+  // ==========================================================
+
+  async function fetchBookingRequests() {
+    setBookingRequestsLoading(true)
+    setBookingRequestsError('')
+
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('discovery_bookings')
+        .select('*')
+        .order('created_at', {
+          ascending: false,
+        })
+
+      if (error) {
+        console.error(
+          'FETCH BOOKING REQUESTS ERROR:',
+          error,
+        )
+
+        setBookingRequestsError(
+          error.message ||
+            'Unable to load booking requests.',
+        )
+
+        setBookingRequests([])
+
+        return
+      }
+
+      setBookingRequests(
+        (data || []) as WebsiteBooking[],
+      )
+    } catch (err: any) {
+      console.error(
+        'UNEXPECTED BOOKING REQUEST ERROR:',
+        err,
+      )
+
+      setBookingRequestsError(
+        err?.message ||
+          'Unable to load booking requests.',
+      )
+    } finally {
+      setBookingRequestsLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    fetchBookingRequests()
+  }, [])
+
+  // ==========================================================
+  // ALL CALL DATA
+  // ==========================================================
 
   const calls =
-    discoveryCalls ?? [];
+    discoveryCalls ?? []
 
   const upcoming =
     calls.filter(
       (call) =>
         call.status === 'Scheduled',
-    );
+    )
 
   const completed =
     calls.filter(
       (call) =>
         call.status === 'Completed',
-    );
+    )
 
   const paidCount =
     calls.filter(
       (call) =>
         call.paymentStatus === 'Paid',
-    ).length;
+    ).length
+
+  // ==========================================================
+  // PENDING WEBSITE REQUESTS
+  // ==========================================================
+
+  const pendingBookingRequests =
+    bookingRequests.filter(
+      (booking) =>
+        !booking.status ||
+        booking.status === 'pending' ||
+        booking.status === 'Pending' ||
+        booking.status === 'booking_requested',
+    )
+
+  // ==========================================================
+  // OPEN CLIENT DETAILS
+  // ==========================================================
+
+  function openClientDetails(
+    booking: WebsiteBooking,
+  ) {
+    setSelectedClient(booking)
+    setClientDetailsOpen(true)
+  }
+
+  // ==========================================================
+  // OPEN PROCEED TO CAL.COM
+  // ==========================================================
+
+  function openProceedToBooking(
+    booking: WebsiteBooking,
+  ) {
+    setSelectedClient(booking)
+
+    const matchingEvent =
+      calEvents.find(
+        (event) =>
+          event.name ===
+          booking.service_name,
+      )
+
+    setSelectedCalEvent(
+      matchingEvent ||
+        calEvents[0],
+    )
+
+    setProceedOpen(true)
+  }
+
+  // ==========================================================
+  // SEND BOOKING EMAIL
+  // ==========================================================
+
+  async function handleSendBookingEmail() {
+    if (!selectedClient) {
+      toast.error(
+        'Please select a client first.',
+      )
+
+      return
+    }
+
+    if (!selectedCalEvent) {
+      toast.error(
+        'Please select a Cal.com event.',
+      )
+
+      return
+    }
+
+    setSendingBookingEmail(true)
+
+    try {
+      /*
+       * This calls the admin project's
+       *
+       * /api/email/send-booking
+       *
+       * route.
+       *
+       * We will create that API route in the
+       * next step using your existing Resend setup.
+       */
+
+      const response = await fetch(
+        '/api/email/send-booking',
+        {
+          method: 'POST',
+
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+
+          body: JSON.stringify({
+            client: {
+              id: selectedClient.id,
+              name: selectedClient.name,
+              email: selectedClient.email,
+              phone:
+                selectedClient.phone,
+              company:
+                selectedClient.company,
+              website:
+                selectedClient.website,
+            },
+
+            booking: {
+              serviceName:
+                selectedClient.service_name ||
+                selectedCalEvent.name,
+
+              servicePrice:
+                selectedClient.service_price ||
+                selectedCalEvent.price,
+
+              requestedDate:
+                selectedClient.date,
+
+              requestedTime:
+                selectedClient.time,
+
+              contactMethod:
+                selectedClient.contact_method,
+
+              budget:
+                selectedClient.budget,
+
+              timeline:
+                selectedClient.timeline,
+
+              goals:
+                selectedClient.goals,
+
+              notes:
+                selectedClient.notes,
+            },
+
+            calEvent: {
+              id:
+                selectedCalEvent.id,
+
+              name:
+                selectedCalEvent.name,
+
+              duration:
+                selectedCalEvent.duration,
+
+              url:
+                selectedCalEvent.url,
+
+              price:
+                selectedCalEvent.price,
+            },
+          }),
+        },
+      )
+
+      const result =
+        await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            'Unable to send booking email.',
+        )
+      }
+
+      // ======================================================
+      // MARK WEBSITE REQUEST AS BOOKING SENT
+      // ======================================================
+
+      const {
+        error: updateError,
+      } = await supabase
+        .from('discovery_bookings')
+        .update({
+          status:
+            'booking_sent',
+        })
+        .eq(
+          'id',
+          selectedClient.id,
+        )
+
+      if (updateError) {
+        console.error(
+          'BOOKING STATUS UPDATE ERROR:',
+          updateError,
+        )
+
+        /*
+         * The email was still sent successfully,
+         * so we don't fail the whole operation.
+         */
+      }
+
+      toast.success(
+        'Booking email sent successfully!',
+        {
+          description:
+            `${selectedClient.name} can now choose their Cal.com schedule.`,
+        },
+      )
+
+      setProceedOpen(false)
+
+      setSelectedClient(null)
+
+      await fetchBookingRequests()
+    } catch (err: any) {
+      console.error(
+        'SEND BOOKING EMAIL ERROR:',
+        err,
+      )
+
+      toast.error(
+        'Failed to send booking email',
+        {
+          description:
+            err?.message ||
+            'Please check your email API configuration.',
+        },
+      )
+    } finally {
+      setSendingBookingEmail(false)
+    }
+  }
 
   // ==========================================================
   // OPEN CAL.COM
   // ==========================================================
 
   function openCalBooking() {
-    setBookingOpen(true);
+    setBookingOpen(true)
   }
 
   // ==========================================================
@@ -288,7 +713,7 @@ export default function DiscoveryCallsPage() {
       CAL_BOOKING_URL,
       '_blank',
       'noopener,noreferrer',
-    );
+    )
   }
 
   // ==========================================================
@@ -298,23 +723,23 @@ export default function DiscoveryCallsPage() {
   function openNotes(
     call: DiscoveryCall,
   ) {
-    setEditingCall(call);
+    setEditingCall(call)
 
     setNotesText(
       call.notes || '',
-    );
+    )
 
-    setNotesOpen(true);
+    setNotesOpen(true)
   }
 
   async function handleSaveNotes(
     e: React.FormEvent,
   ) {
-    e.preventDefault();
+    e.preventDefault()
 
-    if (!editingCall) return;
+    if (!editingCall) return
 
-    setSavingNotes(true);
+    setSavingNotes(true)
 
     try {
       await updateDiscoveryCall(
@@ -322,22 +747,22 @@ export default function DiscoveryCallsPage() {
         {
           notes: notesText,
         },
-      );
+      )
 
       toast.success(
         'Notes saved.',
-      );
+      )
 
-      setNotesOpen(false);
+      setNotesOpen(false)
 
-      setEditingCall(null);
+      setEditingCall(null)
 
-      refetch();
+      refetch()
     } catch (err: any) {
       console.error(
         'SAVE NOTES ERROR:',
         err,
-      );
+      )
 
       toast.error(
         'Failed to save notes',
@@ -346,9 +771,9 @@ export default function DiscoveryCallsPage() {
             err?.message ||
             'Unable to save notes.',
         },
-      );
+      )
     } finally {
-      setSavingNotes(false);
+      setSavingNotes(false)
     }
   }
 
@@ -359,39 +784,39 @@ export default function DiscoveryCallsPage() {
   function openCompleteCall(
     call: DiscoveryCall,
   ) {
-    setEditingCall(call);
+    setEditingCall(call)
 
     setOutcome(
       call.outcome || '',
-    );
+    )
 
-    setNextStep('');
+    setNextStep('')
 
-    setCompleteOpen(true);
+    setCompleteOpen(true)
   }
 
   async function handleCompleteCall(
     e: React.FormEvent,
   ) {
-    e.preventDefault();
+    e.preventDefault()
 
-    if (!editingCall) return;
+    if (!editingCall) return
 
     if (!outcome) {
       toast.error(
         'Please select an outcome.',
-      );
+      )
 
-      return;
+      return
     }
 
-    setSavingOutcome(true);
+    setSavingOutcome(true)
 
     try {
       const finalOutcome =
         nextStep.trim()
           ? `${outcome} | Next Step: ${nextStep.trim()}`
-          : outcome;
+          : outcome
 
       await updateDiscoveryCall(
         editingCall.id,
@@ -399,7 +824,7 @@ export default function DiscoveryCallsPage() {
           status: 'Completed',
           outcome: finalOutcome,
         },
-      );
+      )
 
       toast.success(
         'Discovery call completed.',
@@ -407,22 +832,22 @@ export default function DiscoveryCallsPage() {
           description:
             `${editingCall.clientName}'s call has been updated.`,
         },
-      );
+      )
 
-      setCompleteOpen(false);
+      setCompleteOpen(false)
 
-      setEditingCall(null);
+      setEditingCall(null)
 
-      setOutcome('');
+      setOutcome('')
 
-      setNextStep('');
+      setNextStep('')
 
-      refetch();
+      refetch()
     } catch (err: any) {
       console.error(
         'COMPLETE CALL ERROR:',
         err,
-      );
+      )
 
       toast.error(
         'Failed to complete call',
@@ -431,9 +856,9 @@ export default function DiscoveryCallsPage() {
             err?.message ||
             'Unable to save call outcome.',
         },
-      );
+      )
     } finally {
-      setSavingOutcome(false);
+      setSavingOutcome(false)
     }
   }
 
@@ -445,18 +870,18 @@ export default function DiscoveryCallsPage() {
     id: string,
   ) {
     try {
-      await deleteDiscoveryCall(id);
+      await deleteDiscoveryCall(id)
 
       toast.success(
         'Booking deleted.',
-      );
+      )
 
-      refetch();
+      refetch()
     } catch (err: any) {
       console.error(
         'DELETE BOOKING ERROR:',
         err,
-      );
+      )
 
       toast.error(
         'Failed to delete booking',
@@ -465,7 +890,7 @@ export default function DiscoveryCallsPage() {
             err?.message ||
             'Unable to delete booking.',
         },
-      );
+      )
     }
   }
 
@@ -474,16 +899,18 @@ export default function DiscoveryCallsPage() {
   // ==========================================================
 
   function formatDate(
-    value: string,
+    value?: string | null,
   ) {
-    const date = new Date(value);
+    if (!value) return 'Not selected'
+
+    const date = new Date(value)
 
     if (
       Number.isNaN(
         date.getTime(),
       )
     ) {
-      return value;
+      return value
     }
 
     return date.toLocaleDateString(
@@ -494,20 +921,22 @@ export default function DiscoveryCallsPage() {
         day: 'numeric',
         year: 'numeric',
       },
-    );
+    )
   }
 
   function formatTime(
-    value: string,
+    value?: string | null,
   ) {
-    const date = new Date(value);
+    if (!value) return ''
+
+    const date = new Date(value)
 
     if (
       Number.isNaN(
         date.getTime(),
       )
     ) {
-      return '';
+      return value
     }
 
     return date.toLocaleTimeString(
@@ -516,7 +945,7 @@ export default function DiscoveryCallsPage() {
         hour: 'numeric',
         minute: '2-digit',
       },
-    );
+    )
   }
 
   // ==========================================================
@@ -531,11 +960,11 @@ export default function DiscoveryCallsPage() {
         outcome:
           'No outcome recorded.',
         nextStep: '',
-      };
+      }
     }
 
     const separator =
-      ' | Next Step: ';
+      ' | Next Step: '
 
     if (
       value.includes(
@@ -545,7 +974,7 @@ export default function DiscoveryCallsPage() {
       const parts =
         value.split(
           separator,
-        );
+        )
 
       return {
         outcome: parts[0],
@@ -553,13 +982,13 @@ export default function DiscoveryCallsPage() {
           parts
             .slice(1)
             .join(separator),
-      };
+      }
     }
 
     return {
       outcome: value,
       nextStep: '',
-    };
+    }
   }
 
   // ==========================================================
@@ -570,7 +999,7 @@ export default function DiscoveryCallsPage() {
     <DashboardShell>
       <PageHeader
         title="Discovery Calls"
-        description="Manage booked strategy sessions, client consultations, and discovery outcomes"
+        description="Manage website booking requests, client approvals, Cal.com scheduling, discovery calls, and outcomes."
       >
         <Button
           size="sm"
@@ -587,14 +1016,24 @@ export default function DiscoveryCallsPage() {
           KPI
       ====================================================== */}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <KpiCard
+          label="Booking Requests"
+          value={String(
+            pendingBookingRequests.length,
+          )}
+          icon={Users}
+          accent="text-orange-600 bg-orange-100 dark:bg-orange-500/15 dark:text-orange-400"
+          index={0}
+        />
+
         <KpiCard
           label="Total Calls"
           value={String(
             calls.length,
           )}
           icon={PhoneCall}
-          index={0}
+          index={1}
         />
 
         <KpiCard
@@ -604,7 +1043,7 @@ export default function DiscoveryCallsPage() {
           )}
           icon={Calendar}
           accent="text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400"
-          index={1}
+          index={2}
         />
 
         <KpiCard
@@ -614,7 +1053,7 @@ export default function DiscoveryCallsPage() {
           )}
           icon={CheckCircle}
           accent="text-emerald-600 bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400"
-          index={2}
+          index={3}
         />
 
         <KpiCard
@@ -624,9 +1063,236 @@ export default function DiscoveryCallsPage() {
           )}
           icon={DollarSign}
           accent="text-violet-600 bg-violet-100 dark:bg-violet-500/15 dark:text-violet-400"
-          index={3}
+          index={4}
         />
       </div>
+
+      {/* ======================================================
+          WEBSITE BOOKING REQUESTS
+      ====================================================== */}
+
+      <Card className="mt-6 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="border-b border-border p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-pink-500 text-white">
+                    <Users className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="font-semibold">
+                      Website Booking Requests
+                    </p>
+
+                    <p className="text-sm text-muted-foreground">
+                      Review clients who submitted the discovery booking form on your business website.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-full bg-orange-500/10 px-3 py-1.5 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                {pendingBookingRequests.length}{' '}
+                waiting for review
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5">
+            {bookingRequestsLoading ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {Array.from({
+                  length: 2,
+                }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="animate-pulse rounded-2xl border border-border p-5"
+                  >
+                    <div className="h-5 w-40 rounded bg-muted" />
+
+                    <div className="mt-3 h-4 w-64 rounded bg-muted" />
+
+                    <div className="mt-5 h-20 rounded-lg bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ) : bookingRequestsError ? (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-center">
+                <p className="font-semibold text-destructive">
+                  Unable to load booking requests
+                </p>
+
+                <p className="mt-2 text-sm text-destructive/80">
+                  {bookingRequestsError}
+                </p>
+
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={
+                    fetchBookingRequests
+                  }
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : pendingBookingRequests.length === 0 ? (
+              <div className="py-12 text-center">
+                <Users className="mx-auto h-10 w-10 text-muted-foreground" />
+
+                <h3 className="mt-4 text-lg font-semibold">
+                  No new booking requests
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
+                  New clients who submit the booking form from your business website will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {pendingBookingRequests.map(
+                  (booking, index) => (
+                    <motion.div
+                      key={booking.id}
+                      initial={{
+                        opacity: 0,
+                        y: 10,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                      }}
+                      transition={{
+                        delay:
+                          index * 0.05,
+                      }}
+                    >
+                      <Card className="h-full border-border">
+                        <CardContent className="p-5">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                <Users className="h-5 w-5" />
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">
+                                  {booking.name}
+                                </p>
+
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {booking.email}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span className="shrink-0 rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                              New
+                            </span>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <InfoItem
+                              icon={Sparkles}
+                              label="Service"
+                              value={
+                                booking.service_name ||
+                                'Not specified'
+                              }
+                            />
+
+                            <InfoItem
+                              icon={DollarSign}
+                              label="Session Fee"
+                              value={
+                                booking.service_price
+                                  ? `₱${booking.service_price}`
+                                  : 'Not specified'
+                              }
+                            />
+
+                            <InfoItem
+                              icon={Calendar}
+                              label="Preferred Date"
+                              value={
+                                formatDate(
+                                  booking.date,
+                                )
+                              }
+                            />
+
+                            <InfoItem
+                              icon={Clock}
+                              label="Preferred Time"
+                              value={
+                                booking.time ||
+                                'Not specified'
+                              }
+                            />
+                          </div>
+
+                          {booking.company && (
+                            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                              <Building2 className="h-4 w-4" />
+
+                              <span>
+                                {booking.company}
+                              </span>
+                            </div>
+                          )}
+
+                          {booking.notes && (
+                            <div className="mt-4 rounded-xl bg-muted/50 p-3">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Client Notes
+                              </p>
+
+                              <p className="mt-1 line-clamp-3 text-sm">
+                                {booking.notes}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="mt-5 flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                openClientDetails(
+                                  booking,
+                                )
+                              }
+                            >
+                              <Eye className="mr-1.5 h-3.5 w-3.5" />
+                              View Details
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              onClick={() =>
+                                openProceedToBooking(
+                                  booking,
+                                )
+                              }
+                            >
+                              <Calendar className="mr-1.5 h-3.5 w-3.5" />
+                              Proceed to Cal.com
+                              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ======================================================
           CAL.COM QUICK BOOKING CARD
@@ -647,7 +1313,7 @@ export default function DiscoveryCallsPage() {
                   </p>
 
                   <p className="text-sm text-muted-foreground">
-                    Let clients choose an available discovery call time.
+                    Manually open your Cal.com scheduler.
                   </p>
                 </div>
               </div>
@@ -688,16 +1354,16 @@ export default function DiscoveryCallsPage() {
           ) as CallType[]
         ).map((type) => {
           const meta =
-            callTypeMeta[type];
+            callTypeMeta[type]
 
           const Icon =
-            meta.icon;
+            meta.icon
 
           const count =
             calls.filter(
               (call) =>
                 call.type === type,
-            ).length;
+            ).length
 
           return (
             <Card key={type}>
@@ -727,7 +1393,7 @@ export default function DiscoveryCallsPage() {
                 </div>
               </CardContent>
             </Card>
-          );
+          )
         })}
       </div>
 
@@ -783,7 +1449,7 @@ export default function DiscoveryCallsPage() {
                 </h3>
 
                 <p className="mt-2 text-sm text-muted-foreground">
-                  New booking requests from Cal.com will appear here once connected to your database.
+                  Confirmed bookings from Cal.com will appear here once connected to your database.
                 </p>
 
                 <Button
@@ -807,7 +1473,7 @@ export default function DiscoveryCallsPage() {
                     ] ??
                     callTypeMeta[
                       'Social Growth Sprint'
-                    ];
+                    ]
 
                   return (
                     <motion.div
@@ -857,8 +1523,6 @@ export default function DiscoveryCallsPage() {
                             />
                           </div>
 
-                          {/* DATE */}
-
                           <div className="mt-4 flex items-center gap-2 text-sm">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
 
@@ -876,8 +1540,6 @@ export default function DiscoveryCallsPage() {
                             </span>
                           </div>
 
-                          {/* NOTES */}
-
                           <div className="mt-3 rounded-lg bg-muted/50 p-3">
                             <p className="text-xs font-medium text-muted-foreground">
                               Notes
@@ -888,8 +1550,6 @@ export default function DiscoveryCallsPage() {
                                 'No notes provided.'}
                             </p>
                           </div>
-
-                          {/* ACTIONS */}
 
                           <div className="mt-4 flex gap-2">
                             <Button
@@ -934,7 +1594,7 @@ export default function DiscoveryCallsPage() {
                         </CardContent>
                       </Card>
                     </motion.div>
-                  );
+                  )
                 },
               )}
             </div>
@@ -971,7 +1631,7 @@ export default function DiscoveryCallsPage() {
                     formatOutcome(
                       call.outcome ||
                         '',
-                    );
+                    )
 
                   return (
                     <motion.div
@@ -1012,8 +1672,6 @@ export default function DiscoveryCallsPage() {
                             />
                           </div>
 
-                          {/* OUTCOME */}
-
                           <div className="mt-3 rounded-lg bg-emerald-500/5 p-3">
                             <div className="flex items-center gap-2">
                               <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
@@ -1027,8 +1685,6 @@ export default function DiscoveryCallsPage() {
                               {result.outcome}
                             </p>
                           </div>
-
-                          {/* NEXT STEP */}
 
                           {result.nextStep && (
                             <div className="mt-3 rounded-lg bg-blue-500/5 p-3">
@@ -1046,8 +1702,6 @@ export default function DiscoveryCallsPage() {
                             </div>
                           )}
 
-                          {/* NOTES */}
-
                           {call.notes && (
                             <div className="mt-3 rounded-lg bg-muted/50 p-3">
                               <p className="text-xs font-medium text-muted-foreground">
@@ -1059,8 +1713,6 @@ export default function DiscoveryCallsPage() {
                               </p>
                             </div>
                           )}
-
-                          {/* ACTIONS */}
 
                           <div className="mt-4 flex justify-end">
                             <Button
@@ -1079,13 +1731,516 @@ export default function DiscoveryCallsPage() {
                         </CardContent>
                       </Card>
                     </motion.div>
-                  );
+                  )
                 },
               )}
             </div>
           )}
         </TabsContent>
       </Tabs>
+
+      {/* ======================================================
+          CLIENT DETAILS DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={clientDetailsOpen}
+        onOpenChange={
+          setClientDetailsOpen
+        }
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Client Booking Request
+            </DialogTitle>
+
+            <p className="text-sm text-muted-foreground">
+              Review the complete information submitted from your business website.
+            </p>
+          </DialogHeader>
+
+          {selectedClient && (
+            <div className="space-y-5">
+              <div className="rounded-2xl bg-muted/50 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Users className="h-6 w-6" />
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold">
+                      {selectedClient.name}
+                    </h3>
+
+                    <p className="text-sm text-muted-foreground">
+                      {selectedClient.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <InfoItem
+                  icon={Mail}
+                  label="Email"
+                  value={
+                    selectedClient.email
+                  }
+                />
+
+                <InfoItem
+                  icon={Phone}
+                  label="Phone"
+                  value={
+                    selectedClient.phone ||
+                    'Not provided'
+                  }
+                />
+
+                <InfoItem
+                  icon={Building2}
+                  label="Company"
+                  value={
+                    selectedClient.company ||
+                    'Not provided'
+                  }
+                />
+
+                <InfoItem
+                  icon={Globe}
+                  label="Website"
+                  value={
+                    selectedClient.website ||
+                    'Not provided'
+                  }
+                />
+
+                <InfoItem
+                  icon={Sparkles}
+                  label="Service"
+                  value={
+                    selectedClient.service_name ||
+                    'Not specified'
+                  }
+                />
+
+                <InfoItem
+                  icon={DollarSign}
+                  label="Service Price"
+                  value={
+                    selectedClient.service_price
+                      ? `₱${selectedClient.service_price}`
+                      : 'Not specified'
+                  }
+                />
+
+                <InfoItem
+                  icon={Calendar}
+                  label="Preferred Date"
+                  value={
+                    formatDate(
+                      selectedClient.date,
+                    )
+                  }
+                />
+
+                <InfoItem
+                  icon={Clock}
+                  label="Preferred Time"
+                  value={
+                    selectedClient.time ||
+                    'Not specified'
+                  }
+                />
+
+                <InfoItem
+                  icon={Wallet}
+                  label="Budget"
+                  value={
+                    selectedClient.budget ||
+                    'Not specified'
+                  }
+                />
+
+                <InfoItem
+                  icon={Timer}
+                  label="Timeline"
+                  value={
+                    selectedClient.timeline ||
+                    'Not specified'
+                  }
+                />
+              </div>
+
+              {selectedClient.goals &&
+                selectedClient.goals.length > 0 && (
+                  <div>
+                    <Label>
+                      Goals
+                    </Label>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedClient.goals.map(
+                        (goal) => (
+                          <span
+                            key={goal}
+                            className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
+                          >
+                            {goal}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {selectedClient.notes && (
+                <div>
+                  <Label>
+                    Client Notes
+                  </Label>
+
+                  <div className="mt-2 rounded-xl bg-muted/50 p-4 text-sm leading-relaxed">
+                    {selectedClient.notes}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setClientDetailsOpen(
+                      false,
+                    )
+                  }
+                >
+                  Close
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setClientDetailsOpen(
+                      false,
+                    )
+
+                    openProceedToBooking(
+                      selectedClient,
+                    )
+                  }}
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Proceed to Cal.com
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+          PROCEED TO CAL.COM DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={proceedOpen}
+        onOpenChange={
+          setProceedOpen
+        }
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Proceed Client to Cal.com
+            </DialogTitle>
+
+            <p className="text-sm text-muted-foreground">
+              Select the discovery session you want to send to this client.
+            </p>
+          </DialogHeader>
+
+          {selectedClient && (
+            <div className="space-y-5">
+              {/* CLIENT */}
+
+              <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <User className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="font-semibold">
+                      {selectedClient.name}
+                    </p>
+
+                    <p className="truncate text-sm text-muted-foreground">
+                      {selectedClient.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SERVICE */}
+
+              <div className="space-y-2">
+                <Label>
+                  Cal.com Event
+                </Label>
+
+                <Select
+                  value={
+                    selectedCalEvent.id
+                  }
+                  onValueChange={(
+                    value,
+                  ) => {
+                    const event =
+                      calEvents.find(
+                        (item) =>
+                          item.id ===
+                          value,
+                      )
+
+                    if (event) {
+                      setSelectedCalEvent(
+                        event,
+                      )
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {calEvents.map(
+                      (event) => (
+                        <SelectItem
+                          key={
+                            event.id
+                          }
+                          value={
+                            event.id
+                          }
+                        >
+                          <div>
+                            <p>
+                              {
+                                event.name
+                              }
+                            </p>
+
+                            <p className="text-xs text-muted-foreground">
+                              {
+                                event.duration
+                              }{' '}
+                              · ₱
+                              {
+                                event.price
+                              }
+                            </p>
+                          </div>
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* SELECTED EVENT */}
+
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    <Calendar className="h-5 w-5" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="font-semibold">
+                      {
+                        selectedCalEvent.name
+                      }
+                    </p>
+
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <span>
+                        {
+                          selectedCalEvent.duration
+                        }
+                      </span>
+
+                      <span>
+                        ₱
+                        {
+                          selectedCalEvent.price
+                        }
+                      </span>
+                    </div>
+
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {
+                        selectedCalEvent.description
+                      }
+                    </p>
+
+                    <div className="mt-4 rounded-xl bg-background p-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Cal.com Booking Link
+                      </p>
+
+                      <p className="mt-1 break-all text-sm font-medium">
+                        {
+                          selectedCalEvent.url
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* EMAIL PREVIEW */}
+
+              <div>
+                <Label>
+                  Email Preview
+                </Label>
+
+                <div className="mt-2 rounded-2xl border border-border bg-card p-5">
+                  <p className="text-sm font-semibold">
+                    Subject: Your Discovery Call Is Ready to Book — Nexora Studio
+                  </p>
+
+                  <div className="mt-4 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                    <p>
+                      Hi{' '}
+                      <span className="font-medium text-foreground">
+                        {
+                          selectedClient.name
+                        }
+                      </span>
+                      ,
+                    </p>
+
+                    <p>
+                      Thank you for reaching out to Nexora Studio.
+                    </p>
+
+                    <p>
+                      We've reviewed your discovery call request and we're happy to invite you to schedule your{' '}
+                      <span className="font-medium text-foreground">
+                        {
+                          selectedCalEvent.name
+                        }
+                      </span>
+                      .
+                    </p>
+
+                    <div className="rounded-xl bg-muted/50 p-4">
+                      <p>
+                        <strong>
+                          Session:
+                        </strong>{' '}
+                        {
+                          selectedCalEvent.name
+                        }
+                      </p>
+
+                      <p>
+                        <strong>
+                          Duration:
+                        </strong>{' '}
+                        {
+                          selectedCalEvent.duration
+                        }
+                      </p>
+                    </div>
+
+                    <p>
+                      Please choose the date and time that works best for you using the booking link below.
+                    </p>
+
+                    <div className="rounded-xl bg-primary/10 p-4 text-center font-semibold text-primary">
+                      BOOK YOUR DISCOVERY CALL
+                    </div>
+
+                    <p>
+                      Once you've selected your schedule, Cal.com will automatically send your calendar confirmation.
+                    </p>
+
+                    <p>
+                      We look forward to speaking with you!
+                    </p>
+
+                    <p>
+                      Best regards,
+                      <br />
+                      Nexora Studio
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ACTIONS */}
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setProceedOpen(
+                      false,
+                    )
+                  }
+                  disabled={
+                    sendingBookingEmail
+                  }
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    window.open(
+                      selectedCalEvent.url,
+                      '_blank',
+                      'noopener,noreferrer',
+                    )
+                  }
+                  disabled={
+                    sendingBookingEmail
+                  }
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Preview Cal.com
+                </Button>
+
+                <Button
+                  onClick={
+                    handleSendBookingEmail
+                  }
+                  disabled={
+                    sendingBookingEmail
+                  }
+                >
+                  {sendingBookingEmail ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Send Booking Email
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ======================================================
           CAL.COM BOOKING DIALOG
@@ -1109,7 +2264,9 @@ export default function DiscoveryCallsPage() {
           </DialogHeader>
 
           <div className="max-h-[80vh] overflow-y-auto">
-            <CalBooking />
+            <CalBooking
+              calLink="social-growth-sprint-30-min"
+            />
           </div>
 
           <DialogFooter className="border-t px-6 py-4">
@@ -1231,8 +2388,6 @@ export default function DiscoveryCallsPage() {
             }
             className="space-y-5"
           >
-            {/* CLIENT */}
-
             <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-sm font-semibold">
                 {
@@ -1247,8 +2402,6 @@ export default function DiscoveryCallsPage() {
                 {' min'}
               </p>
             </div>
-
-            {/* OUTCOME */}
 
             <div className="space-y-2">
               <Label>
@@ -1296,8 +2449,6 @@ export default function DiscoveryCallsPage() {
               </Select>
             </div>
 
-            {/* NEXT STEP */}
-
             <div className="space-y-2">
               <Label htmlFor="next-step">
                 Next Step / Follow-up
@@ -1321,8 +2472,6 @@ export default function DiscoveryCallsPage() {
                 This will be saved together with the outcome.
               </p>
             </div>
-
-            {/* SUMMARY */}
 
             {outcome && (
               <div className="rounded-lg border p-4">
@@ -1349,8 +2498,6 @@ export default function DiscoveryCallsPage() {
                 )}
               </div>
             )}
-
-            {/* FOOTER */}
 
             <DialogFooter>
               <Button
@@ -1381,5 +2528,35 @@ export default function DiscoveryCallsPage() {
         </DialogContent>
       </Dialog>
     </DashboardShell>
-  );
+  )
+}
+
+// ============================================================
+// INFO ITEM
+// ============================================================
+
+function InfoItem({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-xl bg-muted/40 p-3">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-primary" />
+
+        <p className="text-xs font-medium text-muted-foreground">
+          {label}
+        </p>
+      </div>
+
+      <p className="mt-1 break-words text-sm font-medium">
+        {value}
+      </p>
+    </div>
+  )
 }
