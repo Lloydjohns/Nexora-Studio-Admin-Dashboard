@@ -1,13 +1,18 @@
-'use client';
+'use client'
 
-import * as React from 'react';
-import Cal from '@calcom/embed-react';
+import Cal from '@calcom/embed-react'
 
-export default function CalBooking() {
+type CalBookingProps = {
+  calLink?: string
+}
+
+export default function CalBooking({
+  calLink = 'nexora-studio-bookstatus',
+}: CalBookingProps) {
   return (
-    <div className="w-full min-h-[700px]">
+    <div className="w-full min-h-[700px] overflow-hidden rounded-2xl border border-border">
       <Cal
-        calLink="https://cal.com/nexora-studio-bookstatus"
+        calLink={calLink}
         style={{
           width: '100%',
           height: '100%',
@@ -19,5 +24,5 @@ export default function CalBooking() {
         }}
       />
     </div>
-  );
+  )
 }
