@@ -1873,27 +1873,27 @@ export default function DiscoveryCallsPage() {
                 />
               </div>
 
-              {selectedClient.goals &&
-                selectedClient.goals.length > 0 && (
-                  <div>
-                    <Label>
-                      Goals
-                    </Label>
+              {Array.isArray(selectedClient.goals) &&
+  selectedClient.goals.length > 0 && (
+    <div>
+      <Label>
+        Goals
+      </Label>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selectedClient.goals.map(
-                        (goal) => (
-                          <span
-                            key={goal}
-                            className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
-                          >
-                            {goal}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {selectedClient.goals.map(
+          (goal, index) => (
+            <span
+              key={`${String(goal)}-${index}`}
+              className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
+            >
+              {String(goal)}
+            </span>
+          ),
+        )}
+      </div>
+    </div>
+  )}
 
               {selectedClient.notes && (
                 <div>
