@@ -1,58 +1,80 @@
-import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
+import { NextResponse } from 'next/server'
+import { Resend } from 'resend'
 
 const resend = new Resend(
   process.env.RESEND_API_KEY,
-);
+)
+
+// ============================================================
+// POST — SEND DISCOVERY CALL BOOKING EMAIL
+// ============================================================
 
 export async function POST(request: Request) {
   try {
-    // ============================================================
+    // ==========================================================
     // CHECK RESEND CONFIGURATION
-    // ============================================================
+    // ==========================================================
 
     if (!process.env.RESEND_API_KEY) {
       console.error(
         'RESEND_API_KEY is not configured.',
-      );
+      )
 
       return NextResponse.json(
         {
           success: false,
           error:
-            'Email service is not configured. Please add RESEND_API_KEY to the environment variables.',
+            'Email service is not configured. Please add RESEND_API_KEY to your environment variables.',
         },
         {
           status: 500,
         },
-      );
+      )
     }
 
-    // ============================================================
-    // GET BOOKING DATA
-    // ============================================================
+    // ==========================================================
+    // GET REQUEST BODY
+    // ==========================================================
 
-    const body = await request.json();
+    const body = await request.json()
+
+    // IMPORTANT:
+    // This matches the exact structure sent by
+    // app/discovery-calls/page.tsx
+    //
+    // {
+    //   client: {...},
+    //   booking: {...},
+    //   calEvent: {...}
+    // }
 
     const {
-      clientName,
-      clientEmail,
-      clientPhone,
-      company,
-      service,
-      date,
-      time,
-      duration,
-      bookingUrl,
-      notes,
-      message,
-    } = body;
+      client,
+      booking,
+      calEvent,
+    } = body
 
-    // ============================================================
-    // VALIDATION
-    // ============================================================
+    // ==========================================================
+    // VALIDATE CLIENT DATA
+    // ==========================================================
 
-    if (!clientName || !clientEmail) {
+    if (!client) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Client information is required.',
+        },
+        {
+          status: 400,
+        },
+      )
+    }
+
+    if (
+      !client.name ||
+      !client.email
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -62,20 +84,184 @@ export async function POST(request: Request) {
         {
           status: 400,
         },
-      );
+      )
     }
 
-    // ============================================================
-    // EMAIL CONTENT
-    // ============================================================
+    // ==========================================================
+    // NORMALIZE BOOKING DATA
+    // ==========================================================
+
+    const clientName =
+      String(client.name)
+
+    const clientEmail =
+      String(client.email)
+
+    const clientPhone =
+      client.phone
+        ? String(client.phone)
+        : ''
+
+    const company =
+      client.company
+        ? String(client.company)
+        : ''
+
+    const website =
+      client.website
+        ? String(client.website)
+        : ''
+
+    const service =
+      booking?.serviceName
+        ? String(
+            booking.serviceName,
+          )
+        : calEvent?.name
+          ? String(calEvent.name)
+          : ''
+
+    const servicePrice =
+      booking?.servicePrice ??
+      calEvent?.price ??
+      null
+
+    const date =
+      booking?.requestedDate
+        ? String(
+            booking.requestedDate,
+          )
+        : ''
+
+    const time =
+      booking?.requestedTime
+        ? String(
+            booking.requestedTime,
+          )
+        : ''
+
+    const duration =
+      calEvent?.duration
+        ? String(
+            calEvent.duration,
+          )
+        : ''
+
+    const bookingUrl =
+      calEvent?.url
+        ? String(
+            calEvent.url,
+          )
+        : ''
+
+    const contactMethod =
+      booking?.contactMethod
+        ? String(
+            booking.contactMethod,
+          )
+        : ''
+
+    const budget =
+      booking?.budget
+        ? String(
+            booking.budget,
+          )
+        : ''
+
+    const timeline =
+      booking?.timeline
+        ? String(
+            booking.timeline,
+          )
+        : ''
+
+    const notes =
+      booking?.notes
+        ? String(
+            booking.notes,
+          )
+        : ''
+
+    const goals =
+      Array.isArray(
+        booking?.goals,
+      )
+        ? booking.goals
+        : []
+
+    // ==========================================================
+    // SUBJECT
+    // ==========================================================
 
     const subject =
-      `Nexora Studio — Discovery Call Invitation${service ? ` | ${service}` : ''}`;
+      `Nexora Studio — Your Discovery Call Is Ready to Book${
+        service
+          ? ` | ${service}`
+          : ''
+      }`
+
+    // ==========================================================
+    // GOALS HTML
+    // ==========================================================
+
+    const goalsHtml =
+      goals.length > 0
+        ? `
+          <div
+            style="
+              margin-top: 18px;
+              padding-top: 18px;
+              border-top: 1px solid #e4e4e7;
+            "
+          >
+
+            <div
+              style="
+                margin-bottom: 10px;
+                font-size: 12px;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: #71717a;
+              "
+            >
+              Project Goals
+            </div>
+
+            ${goals
+              .map(
+                (goal: unknown) => `
+                  <div
+                    style="
+                      display: inline-block;
+                      margin: 0 6px 6px 0;
+                      padding: 6px 10px;
+                      background: #f4f4f5;
+                      border-radius: 999px;
+                      font-size: 12px;
+                      color: #3f3f46;
+                    "
+                  >
+                    ${escapeHtml(goal)}
+                  </div>
+                `,
+              )
+              .join('')}
+
+          </div>
+        `
+        : ''
+
+    // ==========================================================
+    // EMAIL HTML
+    // ==========================================================
 
     const html = `
       <!DOCTYPE html>
+
       <html>
         <head>
+
           <meta charset="UTF-8" />
 
           <meta
@@ -86,6 +272,7 @@ export async function POST(request: Request) {
           <title>
             Discovery Call Invitation
           </title>
+
         </head>
 
         <body
@@ -98,6 +285,8 @@ export async function POST(request: Request) {
           "
         >
 
+          <!-- MAIN CONTAINER -->
+
           <div
             style="
               max-width: 680px;
@@ -109,22 +298,25 @@ export async function POST(request: Request) {
             "
           >
 
-            <!-- HEADER -->
+            <!-- =================================================
+                 HEADER
+            ================================================== -->
 
             <div
               style="
-                padding: 32px;
+                padding: 34px 32px;
                 background: #18181b;
                 color: #ffffff;
               "
             >
+
               <div
                 style="
+                  margin-bottom: 12px;
                   font-size: 13px;
                   font-weight: bold;
                   letter-spacing: 2px;
                   text-transform: uppercase;
-                  margin-bottom: 12px;
                   color: #a1a1aa;
                 "
               >
@@ -136,9 +328,10 @@ export async function POST(request: Request) {
                   margin: 0;
                   font-size: 28px;
                   line-height: 1.3;
+                  color: #ffffff;
                 "
               >
-                You're invited to a discovery call
+                Your discovery call is ready
               </h1>
 
               <p
@@ -149,19 +342,24 @@ export async function POST(request: Request) {
                   color: #d4d4d8;
                 "
               >
-                We've reviewed your inquiry and would love
-                to continue the conversation.
+                We'd love to continue the conversation
+                and learn more about your project.
               </p>
+
             </div>
 
 
-            <!-- BODY -->
+            <!-- =================================================
+                 BODY
+            ================================================== -->
 
             <div
               style="
                 padding: 32px;
               "
             >
+
+              <!-- GREETING -->
 
               <p
                 style="
@@ -171,8 +369,11 @@ export async function POST(request: Request) {
                 "
               >
                 Hi
-                <strong>${escapeHtml(clientName)}</strong>,
+                <strong>
+                  ${escapeHtml(clientName)}
+                </strong>,
               </p>
+
 
               <p
                 style="
@@ -184,14 +385,28 @@ export async function POST(request: Request) {
               >
                 Thank you for reaching out to
                 <strong>Nexora Studio</strong>.
-                We'd like to invite you to continue with
-                a discovery call so we can better understand
-                your goals, answer your questions, and
-                determine the best next step for your project.
+                We've reviewed your inquiry and would
+                love to continue the conversation with you.
               </p>
 
 
-              <!-- BOOKING DETAILS -->
+              <p
+                style="
+                  margin: 0 0 24px;
+                  font-size: 15px;
+                  line-height: 1.7;
+                  color: #52525b;
+                "
+              >
+                Your next step is to choose a date and
+                time that works best for you using our
+                Cal.com booking page.
+              </p>
+
+
+              <!-- =================================================
+                   DISCOVERY CALL DETAILS
+              ================================================== -->
 
               <div
                 style="
@@ -205,7 +420,7 @@ export async function POST(request: Request) {
 
                 <div
                   style="
-                    margin-bottom: 16px;
+                    margin-bottom: 18px;
                     font-size: 13px;
                     font-weight: bold;
                     text-transform: uppercase;
@@ -220,8 +435,16 @@ export async function POST(request: Request) {
                 ${
                   service
                     ? `
-                      <div style="margin-bottom: 12px;">
-                        <strong>Session:</strong>
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Session:
+                        </strong>
                         ${escapeHtml(service)}
                       </div>
                     `
@@ -232,9 +455,42 @@ export async function POST(request: Request) {
                 ${
                   duration
                     ? `
-                      <div style="margin-bottom: 12px;">
-                        <strong>Duration:</strong>
-                        ${escapeHtml(String(duration))} minutes
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Duration:
+                        </strong>
+                        ${escapeHtml(duration)}
+                      </div>
+                    `
+                    : ''
+                }
+
+
+                ${
+                  servicePrice !== null &&
+                  servicePrice !== undefined
+                    ? `
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Session Fee:
+                        </strong>
+                        ₱${escapeHtml(
+                          String(
+                            servicePrice,
+                          ),
+                        )}
                       </div>
                     `
                     : ''
@@ -244,9 +500,17 @@ export async function POST(request: Request) {
                 ${
                   date
                     ? `
-                      <div style="margin-bottom: 12px;">
-                        <strong>Preferred Date:</strong>
-                        ${escapeHtml(String(date))}
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Requested Date:
+                        </strong>
+                        ${escapeHtml(date)}
                       </div>
                     `
                     : ''
@@ -256,9 +520,17 @@ export async function POST(request: Request) {
                 ${
                   time
                     ? `
-                      <div style="margin-bottom: 12px;">
-                        <strong>Preferred Time:</strong>
-                        ${escapeHtml(String(time))}
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Requested Time:
+                        </strong>
+                        ${escapeHtml(time)}
                       </div>
                     `
                     : ''
@@ -266,23 +538,21 @@ export async function POST(request: Request) {
 
 
                 ${
-                  company
+                  contactMethod
                     ? `
-                      <div style="margin-bottom: 12px;">
-                        <strong>Company:</strong>
-                        ${escapeHtml(company)}
-                      </div>
-                    `
-                    : ''
-                }
-
-
-                ${
-                  clientPhone
-                    ? `
-                      <div>
-                        <strong>Phone:</strong>
-                        ${escapeHtml(clientPhone)}
+                      <div
+                        style="
+                          margin-bottom: 12px;
+                          font-size: 14px;
+                          line-height: 1.6;
+                        "
+                      >
+                        <strong>
+                          Preferred Contact:
+                        </strong>
+                        ${escapeHtml(
+                          contactMethod,
+                        )}
                       </div>
                     `
                     : ''
@@ -291,7 +561,9 @@ export async function POST(request: Request) {
               </div>
 
 
-              <!-- CAL.COM BUTTON -->
+              <!-- =================================================
+                   CAL.COM BUTTON
+              ================================================== -->
 
               ${
                 bookingUrl
@@ -304,11 +576,14 @@ export async function POST(request: Request) {
                     >
 
                       <a
-                        href="${escapeHtml(bookingUrl)}"
+                        href="${escapeHtml(
+                          bookingUrl,
+                        )}"
                         target="_blank"
+                        rel="noopener noreferrer"
                         style="
                           display: inline-block;
-                          padding: 14px 26px;
+                          padding: 15px 28px;
                           background: #18181b;
                           color: #ffffff;
                           text-decoration: none;
@@ -319,6 +594,7 @@ export async function POST(request: Request) {
                       >
                         Choose Your Discovery Call Time
                       </a>
+
 
                       <p
                         style="
@@ -338,10 +614,188 @@ export async function POST(request: Request) {
               }
 
 
-              <!-- PERSONAL MESSAGE -->
+              <!-- =================================================
+                   CLIENT / COMPANY INFORMATION
+              ================================================== -->
 
               ${
-                message
+                company ||
+                website ||
+                clientPhone
+                  ? `
+                    <div
+                      style="
+                        margin-top: 24px;
+                        padding: 20px;
+                        background: #fafafa;
+                        border-radius: 14px;
+                        border: 1px solid #e4e4e7;
+                      "
+                    >
+
+                      <div
+                        style="
+                          margin-bottom: 14px;
+                          font-size: 12px;
+                          font-weight: bold;
+                          text-transform: uppercase;
+                          letter-spacing: 1px;
+                          color: #71717a;
+                        "
+                      >
+                        Contact Information
+                      </div>
+
+
+                      ${
+                        company
+                          ? `
+                            <div
+                              style="
+                                margin-bottom: 9px;
+                                font-size: 14px;
+                              "
+                            >
+                              <strong>
+                                Company:
+                              </strong>
+                              ${escapeHtml(company)}
+                            </div>
+                          `
+                          : ''
+                      }
+
+
+                      ${
+                        website
+                          ? `
+                            <div
+                              style="
+                                margin-bottom: 9px;
+                                font-size: 14px;
+                              "
+                            >
+                              <strong>
+                                Website:
+                              </strong>
+                              ${escapeHtml(website)}
+                            </div>
+                          `
+                          : ''
+                      }
+
+
+                      ${
+                        clientPhone
+                          ? `
+                            <div
+                              style="
+                                font-size: 14px;
+                              "
+                            >
+                              <strong>
+                                Phone:
+                              </strong>
+                              ${escapeHtml(
+                                clientPhone,
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
+
+                    </div>
+                  `
+                  : ''
+              }
+
+
+              <!-- =================================================
+                   PROJECT INFORMATION
+              ================================================== -->
+
+              ${
+                budget ||
+                timeline ||
+                goalsHtml
+                  ? `
+                    <div
+                      style="
+                        margin-top: 24px;
+                        padding: 20px;
+                        background: #fafafa;
+                        border-radius: 14px;
+                        border: 1px solid #e4e4e7;
+                      "
+                    >
+
+                      <div
+                        style="
+                          margin-bottom: 14px;
+                          font-size: 12px;
+                          font-weight: bold;
+                          text-transform: uppercase;
+                          letter-spacing: 1px;
+                          color: #71717a;
+                        "
+                      >
+                        Project Information
+                      </div>
+
+
+                      ${
+                        budget
+                          ? `
+                            <div
+                              style="
+                                margin-bottom: 10px;
+                                font-size: 14px;
+                              "
+                            >
+                              <strong>
+                                Budget:
+                              </strong>
+                              ${escapeHtml(budget)}
+                            </div>
+                          `
+                          : ''
+                      }
+
+
+                      ${
+                        timeline
+                          ? `
+                            <div
+                              style="
+                                font-size: 14px;
+                              "
+                            >
+                              <strong>
+                                Timeline:
+                              </strong>
+                              ${escapeHtml(
+                                timeline,
+                              )}
+                            </div>
+                          `
+                          : ''
+                      }
+
+
+                      ${goalsHtml}
+
+                    </div>
+                  `
+                  : ''
+              }
+
+
+              <!-- =================================================
+                   CLIENT NOTES
+              ================================================== -->
+
+              ${
+                notes
                   ? `
                     <div
                       style="
@@ -362,8 +816,9 @@ export async function POST(request: Request) {
                           color: #71717a;
                         "
                       >
-                        Message from Nexora Studio
+                        Your Notes
                       </div>
+
 
                       <p
                         style="
@@ -371,46 +826,7 @@ export async function POST(request: Request) {
                           white-space: pre-wrap;
                           font-size: 14px;
                           line-height: 1.7;
-                        "
-                      >
-                        ${escapeHtml(message)}
-                      </p>
-
-                    </div>
-                  `
-                  : ''
-              }
-
-
-              ${
-                notes
-                  ? `
-                    <div
-                      style="
-                        margin-top: 20px;
-                        padding: 18px;
-                        background: #fafafa;
-                        border-radius: 12px;
-                      "
-                    >
-
-                      <div
-                        style="
-                          margin-bottom: 6px;
-                          font-size: 12px;
-                          font-weight: bold;
-                          color: #71717a;
-                        "
-                      >
-                        Notes
-                      </div>
-
-                      <p
-                        style="
-                          margin: 0;
-                          white-space: pre-wrap;
-                          font-size: 14px;
-                          line-height: 1.6;
+                          color: #3f3f46;
                         "
                       >
                         ${escapeHtml(notes)}
@@ -422,9 +838,27 @@ export async function POST(request: Request) {
               }
 
 
+              <!-- =================================================
+                   FINAL MESSAGE
+              ================================================== -->
+
               <p
                 style="
                   margin: 28px 0 0;
+                  font-size: 15px;
+                  line-height: 1.7;
+                  color: #52525b;
+                "
+              >
+                Once you've selected your preferred schedule,
+                Cal.com will handle the calendar confirmation
+                for you.
+              </p>
+
+
+              <p
+                style="
+                  margin: 18px 0 0;
                   font-size: 15px;
                   line-height: 1.7;
                   color: #52525b;
@@ -442,7 +876,8 @@ export async function POST(request: Request) {
                   line-height: 1.7;
                 "
               >
-                Best regards,<br />
+                Best regards,
+                <br />
 
                 <strong>
                   Nexora Studio
@@ -452,7 +887,9 @@ export async function POST(request: Request) {
             </div>
 
 
-            <!-- FOOTER -->
+            <!-- =================================================
+                 FOOTER
+            ================================================== -->
 
             <div
               style="
@@ -464,41 +901,68 @@ export async function POST(request: Request) {
                 color: #71717a;
               "
             >
-              This email was sent by Nexora Studio regarding
-              your discovery call request.
+
+              This email was sent by
+              <strong>Nexora Studio</strong>
+              regarding your discovery call request.
+
+              <br />
+
+              If you did not submit this request,
+              you can safely ignore this email.
+
             </div>
 
           </div>
 
         </body>
       </html>
-    `;
+    `
 
-    // ============================================================
-    // SEND EMAIL USING RESEND
-    // ============================================================
+    // ==========================================================
+    // SEND EMAIL THROUGH RESEND
+    // ==========================================================
 
-    const result = await resend.emails.send({
-      from:
-        process.env.RESEND_FROM_EMAIL ||
-        'Nexora Studio <onboarding@resend.dev>',
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL
 
-      to: [clientEmail],
+    if (!fromEmail) {
+      console.error(
+        'RESEND_FROM_EMAIL is not configured.',
+      )
 
-      subject,
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Sender email is not configured. Please add RESEND_FROM_EMAIL to your environment variables.',
+        },
+        {
+          status: 500,
+        },
+      )
+    }
 
-      html,
-    });
+    const result =
+      await resend.emails.send({
+        from: fromEmail,
 
-    // ============================================================
+        to: [clientEmail],
+
+        subject,
+
+        html,
+      })
+
+    // ==========================================================
     // CHECK RESEND RESPONSE
-    // ============================================================
+    // ==========================================================
 
     if (result.error) {
       console.error(
         'RESEND EMAIL ERROR:',
         result.error,
-      );
+      )
 
       return NextResponse.json(
         {
@@ -510,30 +974,41 @@ export async function POST(request: Request) {
         {
           status: 500,
         },
-      );
+      )
     }
+
+    // ==========================================================
+    // SUCCESS
+    // ==========================================================
 
     console.log(
       'Booking email successfully sent:',
       result.data,
-    );
+    )
 
     return NextResponse.json({
       success: true,
+
       message:
         'Booking email sent successfully.',
+
       emailId:
         result.data?.id || null,
-    });
+    })
   } catch (error) {
+    // ==========================================================
+    // UNEXPECTED ERROR
+    // ==========================================================
+
     console.error(
       'SEND BOOKING EMAIL ERROR:',
       error,
-    );
+    )
 
     return NextResponse.json(
       {
         success: false,
+
         error:
           error instanceof Error
             ? error.message
@@ -542,10 +1017,9 @@ export async function POST(request: Request) {
       {
         status: 500,
       },
-    );
+    )
   }
 }
-
 
 // ============================================================
 // HTML ESCAPE HELPER
@@ -555,9 +1029,24 @@ function escapeHtml(
   value: unknown,
 ): string {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(
+      /&/g,
+      '&amp;',
+    )
+    .replace(
+      /</g,
+      '&lt;',
+    )
+    .replace(
+      />/g,
+      '&gt;',
+    )
+    .replace(
+      /"/g,
+      '&quot;',
+    )
+    .replace(
+      /'/g,
+      '&#039;',
+    )
 }
