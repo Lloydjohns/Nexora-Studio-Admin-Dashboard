@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import CalBooking from '@/components/cal-booking';
 
 import {
   Plus,
@@ -15,6 +16,7 @@ import {
   Trash2,
   Target,
   ArrowRight,
+  ExternalLink,
 } from 'lucide-react';
 
 import { motion } from 'framer-motion';
@@ -32,13 +34,9 @@ import {
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 
 import { Button } from '@/components/ui/button';
-
-import { Badge } from '@/components/ui/badge';
 
 import {
   Tabs,
@@ -55,8 +53,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
-import { Input } from '@/components/ui/input';
-
 import { Label } from '@/components/ui/label';
 
 import { Textarea } from '@/components/ui/textarea';
@@ -71,7 +67,6 @@ import {
 
 import {
   fetchDiscoveryCalls,
-  insertDiscoveryCall,
   updateDiscoveryCall,
   deleteDiscoveryCall,
 } from '@/lib/api';
@@ -86,6 +81,13 @@ import { useFetch } from '@/hooks/use-fetch';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
+
+// ============================================================
+// CAL.COM BOOKING URL
+// ============================================================
+
+const CAL_BOOKING_URL =
+  'https://cal.com/nexora-studio-bookstatus';
 
 // ============================================================
 // CALL TYPES
@@ -132,49 +134,57 @@ const outcomeOptions = [
   {
     value: 'Proposal Sent — Awaiting Decision',
     label: 'Proposal Sent — Awaiting Decision',
-    description: 'Client is interested and waiting to review the proposal.',
+    description:
+      'Client is interested and waiting to review the proposal.',
   },
 
   {
     value: 'Client Accepted — Project Won',
     label: 'Client Accepted — Project Won',
-    description: 'Client accepted the offer and is ready to proceed.',
+    description:
+      'Client accepted the offer and is ready to proceed.',
   },
 
   {
     value: 'Follow-up Required',
     label: 'Follow-up Required',
-    description: 'Client needs another conversation before deciding.',
+    description:
+      'Client needs another conversation before deciding.',
   },
 
   {
     value: 'Paid & Ready to Start',
     label: 'Paid & Ready to Start',
-    description: 'Payment is complete and the project can begin.',
+    description:
+      'Payment is complete and the project can begin.',
   },
 
   {
     value: 'Not Interested',
     label: 'Not Interested',
-    description: 'Client decided not to proceed.',
+    description:
+      'Client decided not to proceed.',
   },
 
   {
     value: 'Not a Good Fit',
     label: 'Not a Good Fit',
-    description: 'The service is not suitable for the client.',
+    description:
+      'The service is not suitable for the client.',
   },
 
   {
     value: 'Call Rescheduled',
     label: 'Call Rescheduled',
-    description: 'The discovery call needs to happen at another time.',
+    description:
+      'The discovery call needs to happen at another time.',
   },
 
   {
     value: 'No Show',
     label: 'No Show',
-    description: 'Client did not attend the scheduled call.',
+    description:
+      'Client did not attend the scheduled call.',
   },
 ];
 
@@ -195,13 +205,15 @@ export default function DiscoveryCallsPage() {
   );
 
   const refetch = () =>
-    setRefreshKey((current) => current + 1);
+    setRefreshKey(
+      (current) => current + 1,
+    );
 
   // ==========================================================
-  // BOOKING DIALOG
+  // CAL.COM DIALOG
   // ==========================================================
 
-  const [open, setOpen] =
+  const [bookingOpen, setBookingOpen] =
     React.useState(false);
 
   // ==========================================================
@@ -219,7 +231,9 @@ export default function DiscoveryCallsPage() {
     React.useState(false);
 
   const [editingCall, setEditingCall] =
-    React.useState<DiscoveryCall | null>(null);
+    React.useState<DiscoveryCall | null>(
+      null,
+    );
 
   const [notesText, setNotesText] =
     React.useState('');
@@ -236,128 +250,45 @@ export default function DiscoveryCallsPage() {
   const [savingOutcome, setSavingOutcome] =
     React.useState(false);
 
-  const [submitting, setSubmitting] =
-    React.useState(false);
+  const calls =
+    discoveryCalls ?? [];
+
+  const upcoming =
+    calls.filter(
+      (call) =>
+        call.status === 'Scheduled',
+    );
+
+  const completed =
+    calls.filter(
+      (call) =>
+        call.status === 'Completed',
+    );
+
+  const paidCount =
+    calls.filter(
+      (call) =>
+        call.paymentStatus === 'Paid',
+    ).length;
 
   // ==========================================================
-  // BOOKING FORM
+  // OPEN CAL.COM
   // ==========================================================
 
-  const [form, setForm] =
-    React.useState({
-      clientName: '',
-      type: 'Social Growth Sprint' as CallType,
-      duration: '30',
-      date: '',
-      status: 'Scheduled',
-      paymentStatus: 'Pending',
-      notes: '',
-      outcome: '',
-    });
-
-  const calls = discoveryCalls ?? [];
-
-  const upcoming = calls.filter(
-    (call) =>
-      call.status === 'Scheduled',
-  );
-
-  const completed = calls.filter(
-    (call) =>
-      call.status === 'Completed',
-  );
-
-  const paidCount = calls.filter(
-    (call) =>
-      call.paymentStatus === 'Paid',
-  ).length;
-
-  // ==========================================================
-  // RESET FORM
-  // ==========================================================
-
-  function resetForm() {
-    setForm({
-      clientName: '',
-      type: 'Social Growth Sprint',
-      duration: '30',
-      date: '',
-      status: 'Scheduled',
-      paymentStatus: 'Pending',
-      notes: '',
-      outcome: '',
-    });
+  function openCalBooking() {
+    setBookingOpen(true);
   }
 
   // ==========================================================
-  // ADMIN BOOKING
+  // OPEN CAL.COM EXTERNAL
   // ==========================================================
 
-  async function handleSubmit(
-    e: React.FormEvent,
-  ) {
-    e.preventDefault();
-
-    if (!form.clientName.trim()) {
-      toast.error(
-        'Please enter the client name.',
-      );
-
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      await insertDiscoveryCall({
-        client_name:
-          form.clientName.trim(),
-
-        type: form.type,
-
-        duration:
-          Number(form.duration) || 30,
-
-        date:
-          form.date ||
-          new Date().toISOString(),
-
-        status: form.status,
-
-        payment_status:
-          form.paymentStatus,
-
-        notes: form.notes,
-
-        outcome: form.outcome,
-      });
-
-      toast.success(
-        'Discovery call booked successfully.',
-      );
-
-      setOpen(false);
-
-      resetForm();
-
-      refetch();
-    } catch (err: any) {
-      console.error(
-        'BOOKING ERROR:',
-        err,
-      );
-
-      toast.error(
-        'Failed to book call',
-        {
-          description:
-            err?.message ||
-            'Unable to save booking.',
-        },
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  function openCalExternally() {
+    window.open(
+      CAL_BOOKING_URL,
+      '_blank',
+      'noopener,noreferrer',
+    );
   }
 
   // ==========================================================
@@ -403,6 +334,11 @@ export default function DiscoveryCallsPage() {
 
       refetch();
     } catch (err: any) {
+      console.error(
+        'SAVE NOTES ERROR:',
+        err,
+      );
+
       toast.error(
         'Failed to save notes',
         {
@@ -517,6 +453,11 @@ export default function DiscoveryCallsPage() {
 
       refetch();
     } catch (err: any) {
+      console.error(
+        'DELETE BOOKING ERROR:',
+        err,
+      );
+
       toast.error(
         'Failed to delete booking',
         {
@@ -537,7 +478,11 @@ export default function DiscoveryCallsPage() {
   ) {
     const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime(),
+      )
+    ) {
       return value;
     }
 
@@ -557,7 +502,11 @@ export default function DiscoveryCallsPage() {
   ) {
     const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime(),
+      )
+    ) {
       return '';
     }
 
@@ -579,7 +528,8 @@ export default function DiscoveryCallsPage() {
   ) {
     if (!value) {
       return {
-        outcome: 'No outcome recorded.',
+        outcome:
+          'No outcome recorded.',
         nextStep: '',
       };
     }
@@ -588,15 +538,21 @@ export default function DiscoveryCallsPage() {
       ' | Next Step: ';
 
     if (
-      value.includes(separator)
+      value.includes(
+        separator,
+      )
     ) {
       const parts =
-        value.split(separator);
+        value.split(
+          separator,
+        );
 
       return {
         outcome: parts[0],
         nextStep:
-          parts.slice(1).join(separator),
+          parts
+            .slice(1)
+            .join(separator),
       };
     }
 
@@ -618,10 +574,9 @@ export default function DiscoveryCallsPage() {
       >
         <Button
           size="sm"
-          onClick={() => {
-            resetForm();
-            setOpen(true);
-          }}
+          onClick={
+            openCalBooking
+          }
         >
           <Plus className="mr-1.5 h-4 w-4" />
           Book Call
@@ -635,14 +590,18 @@ export default function DiscoveryCallsPage() {
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
           label="Total Calls"
-          value={String(calls.length)}
+          value={String(
+            calls.length,
+          )}
           icon={PhoneCall}
           index={0}
         />
 
         <KpiCard
           label="Upcoming"
-          value={String(upcoming.length)}
+          value={String(
+            upcoming.length,
+          )}
           icon={Calendar}
           accent="text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400"
           index={1}
@@ -650,7 +609,9 @@ export default function DiscoveryCallsPage() {
 
         <KpiCard
           label="Completed"
-          value={String(completed.length)}
+          value={String(
+            completed.length,
+          )}
           icon={CheckCircle}
           accent="text-emerald-600 bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400"
           index={2}
@@ -658,12 +619,63 @@ export default function DiscoveryCallsPage() {
 
         <KpiCard
           label="Paid Sessions"
-          value={String(paidCount)}
+          value={String(
+            paidCount,
+          )}
           icon={DollarSign}
           accent="text-violet-600 bg-violet-100 dark:bg-violet-500/15 dark:text-violet-400"
           index={3}
         />
       </div>
+
+      {/* ======================================================
+          CAL.COM QUICK BOOKING CARD
+      ====================================================== */}
+
+      <Card className="mt-6 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 text-white">
+                  <Calendar className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <p className="font-semibold">
+                    Cal.com Booking
+                  </p>
+
+                  <p className="text-sm text-muted-foreground">
+                    Let clients choose an available discovery call time.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={
+                  openCalBooking
+                }
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                Open Scheduler
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={
+                  openCalExternally
+                }
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open Cal.com
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ======================================================
           CALL TYPES
@@ -771,8 +783,18 @@ export default function DiscoveryCallsPage() {
                 </h3>
 
                 <p className="mt-2 text-sm text-muted-foreground">
-                  New booking requests from your website will appear here.
+                  New booking requests from Cal.com will appear here once connected to your database.
                 </p>
+
+                <Button
+                  className="mt-5"
+                  onClick={
+                    openCalBooking
+                  }
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Schedule a Call
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -881,7 +903,6 @@ export default function DiscoveryCallsPage() {
                               }
                             >
                               <FileText className="mr-1.5 h-3.5 w-3.5" />
-
                               Add Notes
                             </Button>
 
@@ -895,7 +916,6 @@ export default function DiscoveryCallsPage() {
                               }
                             >
                               <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-
                               Complete Call
                             </Button>
 
@@ -1053,7 +1073,6 @@ export default function DiscoveryCallsPage() {
                               }
                             >
                               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-
                               Delete
                             </Button>
                           </div>
@@ -1069,306 +1088,51 @@ export default function DiscoveryCallsPage() {
       </Tabs>
 
       {/* ======================================================
-          ADMIN BOOKING DIALOG
+          CAL.COM BOOKING DIALOG
       ====================================================== */}
 
       <Dialog
-        open={open}
-        onOpenChange={setOpen}
+        open={bookingOpen}
+        onOpenChange={
+          setBookingOpen
+        }
       >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-5xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>
-              Book Discovery Call
+              Schedule a Discovery Call
             </DialogTitle>
+
+            <p className="text-sm text-muted-foreground">
+              Choose an available date and time from your Cal.com schedule.
+            </p>
           </DialogHeader>
 
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-4"
-          >
-            {/* CLIENT */}
+          <div className="max-h-[80vh] overflow-y-auto">
+            <CalBooking />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="clientName">
-                Client Name
-              </Label>
+          <DialogFooter className="border-t px-6 py-4">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setBookingOpen(
+                  false,
+                )
+              }
+            >
+              Close
+            </Button>
 
-              <Input
-                id="clientName"
-                value={
-                  form.clientName
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    clientName:
-                      e.target.value,
-                  })
-                }
-                placeholder="e.g. Patricia Lim"
-                required
-              />
-            </div>
-
-            {/* TYPE + DURATION */}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>
-                  Call Type
-                </Label>
-
-                <Select
-                  value={form.type}
-                  onValueChange={(value) =>
-                    setForm({
-                      ...form,
-                      type:
-                        value as CallType,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    {callTypes.map(
-                      (type) => (
-                        <SelectItem
-                          key={type}
-                          value={type}
-                        >
-                          {type}
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="duration">
-                  Duration (min)
-                </Label>
-
-                <Input
-                  id="duration"
-                  type="number"
-                  value={
-                    form.duration
-                  }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      duration:
-                        e.target.value,
-                    })
-                  }
-                  required
-                />
-              </div>
-            </div>
-
-            {/* DATE */}
-
-            <div className="space-y-2">
-              <Label htmlFor="date">
-                Date & Time
-              </Label>
-
-              <Input
-                id="date"
-                type="datetime-local"
-                value={form.date}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    date:
-                      e.target.value,
-                  })
-                }
-              />
-            </div>
-
-            {/* STATUS + PAYMENT */}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>
-                  Status
-                </Label>
-
-                <Select
-                  value={
-                    form.status
-                  }
-                  onValueChange={(
-                    value,
-                  ) =>
-                    setForm({
-                      ...form,
-                      status:
-                        value,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <SelectItem value="Scheduled">
-                      Scheduled
-                    </SelectItem>
-
-                    <SelectItem value="Completed">
-                      Completed
-                    </SelectItem>
-
-                    <SelectItem value="Cancelled">
-                      Cancelled
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>
-                  Payment Status
-                </Label>
-
-                <Select
-                  value={
-                    form.paymentStatus
-                  }
-                  onValueChange={(
-                    value,
-                  ) =>
-                    setForm({
-                      ...form,
-                      paymentStatus:
-                        value,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <SelectItem value="Paid">
-                      Paid
-                    </SelectItem>
-
-                    <SelectItem value="Free">
-                      Free
-                    </SelectItem>
-
-                    <SelectItem value="Pending">
-                      Pending
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* NOTES */}
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">
-                Notes
-              </Label>
-
-              <Textarea
-                id="notes"
-                value={form.notes}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    notes:
-                      e.target.value,
-                  })
-                }
-                placeholder="Call context and goals..."
-                rows={3}
-              />
-            </div>
-
-            {/* OUTCOME */}
-
-            <div className="space-y-2">
-              <Label>
-                Initial Outcome
-              </Label>
-
-              <Select
-                value={
-                  form.outcome || ''
-                }
-                onValueChange={(
-                  value,
-                ) =>
-                  setForm({
-                    ...form,
-                    outcome:
-                      value,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select outcome (optional)" />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {outcomeOptions.map(
-                    (option) => (
-                      <SelectItem
-                        key={
-                          option.value
-                        }
-                        value={
-                          option.value
-                        }
-                      >
-                        {option.label}
-                      </SelectItem>
-                    ),
-                  )}
-                </SelectContent>
-              </Select>
-
-              <p className="text-xs text-muted-foreground">
-                You can also record the final outcome after the call using "Complete Call".
-              </p>
-            </div>
-
-            {/* FOOTER */}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setOpen(false)
-                }
-              >
-                Cancel
-              </Button>
-
-              <Button
-                type="submit"
-                disabled={
-                  submitting
-                }
-              >
-                {submitting
-                  ? 'Booking...'
-                  : 'Book Call'}
-              </Button>
-            </DialogFooter>
-          </form>
+            <Button
+              onClick={
+                openCalExternally
+              }
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open Full Scheduler
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
