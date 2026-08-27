@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 type CreateUserBody = {
   name: string;
@@ -14,12 +14,17 @@ type CreateUserBody = {
   utilization?: number;
 };
 
-function jsonError(
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function errorResponse(
   message: string,
   status: number,
 ) {
   return NextResponse.json(
     {
+      success: false,
       error: message,
     },
     {
@@ -28,83 +33,91 @@ function jsonError(
   );
 }
 
-export async function POST(request: Request) {
-  let createdAuthUserId: string | null = null;
-  let adminSupabase:
-    | ReturnType<typeof createAdminClient>
+/* ============================================================
+   CREATE TEAM ACCOUNT
+============================================================ */
+
+export async function POST(
+  request: Request,
+) {
+  let createdAuthUserId:
+    | string
     | null = null;
 
   try {
-    /*
-     * ========================================================
-     * 1. CHECK CURRENT SESSION
-     * ========================================================
-     *
-     * Only an already authenticated user may call this route.
-     */
-    const supabase = await createClient();
+    /* ========================================================
+       1. VERIFY CURRENTLY LOGGED-IN USER
+    ======================================================== */
+
+    const supabase =
+      await createClient();
 
     const {
-      data: { user },
+      data: {
+        user,
+      },
       error: userError,
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (userError) {
       console.error(
-        'Failed to read current Supabase user:',
+        'Failed to get current user:',
         userError,
       );
 
-      return jsonError(
+      return errorResponse(
         'Unable to verify your current session.',
         401,
       );
     }
 
     if (!user) {
-      return jsonError(
+      return errorResponse(
         'You must be signed in as an administrator to create team accounts.',
         401,
       );
     }
 
+    /* ========================================================
+       2. VERIFY ADMINISTRATOR
+    ======================================================== */
+
+    const adminEmails =
+      String(
+        process.env.ADMIN_EMAILS ?? '',
+      )
+        .split(',')
+        .map((email) =>
+          email
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean);
+
+    const currentUserEmail =
+      String(
+        user.email ?? '',
+      )
+        .trim()
+        .toLowerCase();
+
     /*
-     * ========================================================
-     * 2. VERIFY ADMIN ACCESS
-     * ========================================================
-     *
-     * ADMIN_EMAILS should contain one or more approved
-     * administrator emails separated by commas.
+     * ADMIN_EMAILS must be configured.
      *
      * Example:
      *
      * ADMIN_EMAILS=admin@nexorastudio.ph,owner@nexorastudio.ph
-     *
-     * IMPORTANT:
-     * The role submitted by the browser is NOT used to decide
-     * whether the current user is an administrator.
      */
-    const adminEmails = String(
-      process.env.ADMIN_EMAILS ?? '',
-    )
-      .split(',')
-      .map((email) =>
-        email.trim().toLowerCase(),
-      )
-      .filter(Boolean);
-
-    const currentUserEmail = String(
-      user.email ?? '',
-    )
-      .trim()
-      .toLowerCase();
-
-    if (adminEmails.length === 0) {
+    if (
+      adminEmails.length ===
+      0
+    ) {
       console.error(
-        'ADMIN_EMAILS environment variable is missing or empty.',
+        'ADMIN_EMAILS is missing or empty.',
       );
 
-      return jsonError(
+      return errorResponse(
         'Server administrator configuration is missing.',
         500,
       );
@@ -124,256 +137,222 @@ export async function POST(request: Request) {
         },
       );
 
-      return jsonError(
+      return errorResponse(
         'Only authorized administrators can create team accounts.',
         403,
       );
     }
 
-    /*
-     * ========================================================
-     * 3. READ REQUEST BODY
-     * ========================================================
-     */
-    let body: CreateUserBody;
+    /* ========================================================
+       3. READ REQUEST BODY
+    ======================================================== */
+
+    let body:
+      | CreateUserBody;
 
     try {
       body =
         (await request.json()) as CreateUserBody;
     } catch {
-      return jsonError(
+      return errorResponse(
         'Invalid request body.',
         400,
       );
     }
 
-    const name = String(
-      body.name ?? '',
-    ).trim();
+    /* ========================================================
+       4. CLEAN INPUT
+    ======================================================== */
 
-    const email = String(
-      body.email ?? '',
-    )
-      .trim()
-      .toLowerCase();
+    const name =
+      String(
+        body.name ?? '',
+      ).trim();
 
-    const password = String(
-      body.password ?? '',
-    );
+    const email =
+      String(
+        body.email ?? '',
+      )
+        .trim()
+        .toLowerCase();
 
-    const role = String(
-      body.role ?? 'Admin',
-    ).trim();
+    const password =
+      String(
+        body.password ?? '',
+      );
 
-    const availability = String(
-      body.availability ?? 'Available',
-    ).trim();
+    const role =
+      String(
+        body.role ?? 'Admin',
+      ).trim();
 
-    const activeProjects = Math.max(
-      0,
-      Number(
-        body.activeProjects ?? 0,
-      ) || 0,
-    );
+    const availability =
+      String(
+        body.availability ??
+          'Available',
+      ).trim();
 
-    const tasksAssigned = Math.max(
-      0,
-      Number(
-        body.tasksAssigned ?? 0,
-      ) || 0,
-    );
-
-    const tasksCompleted = Math.max(
-      0,
-      Number(
-        body.tasksCompleted ?? 0,
-      ) || 0,
-    );
-
-    const utilization = Math.min(
-      100,
+    const activeProjects =
       Math.max(
         0,
         Number(
-          body.utilization ?? 50,
+          body.activeProjects ??
+            0,
         ) || 0,
-      ),
-    );
+      );
 
-    /*
-     * ========================================================
-     * 4. VALIDATE INPUT
-     * ========================================================
-     */
+    const tasksAssigned =
+      Math.max(
+        0,
+        Number(
+          body.tasksAssigned ??
+            0,
+        ) || 0,
+      );
+
+    const tasksCompleted =
+      Math.max(
+        0,
+        Number(
+          body.tasksCompleted ??
+            0,
+        ) || 0,
+      );
+
+    const utilization =
+      Math.min(
+        100,
+        Math.max(
+          0,
+          Number(
+            body.utilization ??
+              50,
+          ) || 0,
+        ),
+      );
+
+    /* ========================================================
+       5. VALIDATION
+    ======================================================== */
+
     if (!name) {
-      return jsonError(
+      return errorResponse(
         'Name is required.',
         400,
       );
     }
 
     if (!email) {
-      return jsonError(
+      return errorResponse(
         'Email is required.',
         400,
       );
     }
 
-    /*
-     * Basic email validation.
-     */
     const emailPattern =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!emailPattern.test(email)) {
-      return jsonError(
+    if (
+      !emailPattern.test(
+        email,
+      )
+    ) {
+      return errorResponse(
         'Please provide a valid email address.',
         400,
       );
     }
 
     if (!password) {
-      return jsonError(
+      return errorResponse(
         'Password is required.',
         400,
       );
     }
 
-    if (password.length < 8) {
-      return jsonError(
+    if (
+      password.length < 8
+    ) {
+      return errorResponse(
         'Password must contain at least 8 characters.',
         400,
       );
     }
 
     if (!role) {
-      return jsonError(
+      return errorResponse(
         'Role is required.',
         400,
       );
     }
 
-    /*
-     * ========================================================
-     * 5. VERIFY SERVER ENVIRONMENT
-     * ========================================================
-     *
-     * NEVER expose SUPABASE_SERVICE_ROLE_KEY to the browser.
-     */
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const serviceRoleKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl) {
-      console.error(
-        'Missing NEXT_PUBLIC_SUPABASE_URL on server.',
-      );
-
-      return jsonError(
-        'Server Supabase configuration is missing: NEXT_PUBLIC_SUPABASE_URL.',
-        500,
-      );
-    }
-
-    if (!serviceRoleKey) {
-      console.error(
-        'Missing SUPABASE_SERVICE_ROLE_KEY on server.',
-      );
-
-      return jsonError(
-        'Server Supabase configuration is missing: SUPABASE_SERVICE_ROLE_KEY.',
-        500,
-      );
-    }
-
-    /*
-     * ========================================================
-     * 6. CREATE SERVER-ONLY ADMIN CLIENT
-     * ========================================================
-     */
-    adminSupabase =
-      createAdminClient(
-        supabaseUrl,
-        serviceRoleKey,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        },
-      );
-
-    /*
-     * ========================================================
-     * 7. CHECK FOR EXISTING EMAIL
-     * ========================================================
-     *
-     * Supabase Auth will also reject duplicate emails, but this
-     * gives the UI a cleaner error before creating anything.
-     */
-    let existingUserFound = false;
+    /* ========================================================
+       6. CHECK WHETHER AUTH USER ALREADY EXISTS
+    ======================================================== */
 
     try {
       const {
         data: usersData,
         error: usersError,
       } =
-        await adminSupabase.auth.admin.listUsers({
-          page: 1,
-          perPage: 1000,
-        });
+        await supabaseAdmin.auth.admin.listUsers(
+          {
+            page: 1,
+            perPage: 1000,
+          },
+        );
 
       if (!usersError) {
-        existingUserFound =
-          usersData.users.some(
+        const existingUser =
+          usersData.users.find(
             (existingUser) =>
               String(
-                existingUser.email ?? '',
+                existingUser.email ??
+                  '',
               )
                 .trim()
-                .toLowerCase() === email,
+                .toLowerCase() ===
+              email,
           );
+
+        if (existingUser) {
+          return errorResponse(
+            'An account with this email already exists.',
+            409,
+          );
+        }
       }
     } catch (error) {
       /*
-       * If the duplicate check fails, continue and allow
-       * Supabase Auth itself to determine whether the email
-       * already exists.
+       * Duplicate detection is only a convenience check.
+       *
+       * Supabase Auth will still reject duplicate emails if the
+       * account exists.
        */
       console.warn(
-        'Could not perform duplicate email pre-check:',
+        'Could not complete duplicate email check:',
         error,
       );
     }
 
-    if (existingUserFound) {
-      return jsonError(
-        'An Auth account with this email already exists.',
-        409,
-      );
-    }
+    /* ========================================================
+       7. CREATE SUPABASE AUTH USER
+    ======================================================== */
 
-    /*
-     * ========================================================
-     * 8. CREATE SUPABASE AUTH USER
-     * ========================================================
-     *
-     * email_confirm: true
-     *
-     * means the team member can sign in immediately using the
-     * password created by the administrator.
-     */
     const {
       data: authData,
       error: authError,
     } =
-      await adminSupabase.auth.admin.createUser(
+      await supabaseAdmin.auth.admin.createUser(
         {
           email,
           password,
+
+          /*
+           * Admin-created team accounts can log in immediately.
+           */
           email_confirm: true,
+
           user_metadata: {
             full_name: name,
             role,
@@ -383,7 +362,7 @@ export async function POST(request: Request) {
 
     if (authError) {
       console.error(
-        'Failed to create Supabase Auth user:',
+        'Supabase Auth createUser failed:',
         {
           message:
             authError.message,
@@ -394,15 +373,17 @@ export async function POST(request: Request) {
         },
       );
 
-      return jsonError(
+      return errorResponse(
         authError.message ||
           'Failed to create the authentication account.',
         400,
       );
     }
 
-    if (!authData.user) {
-      return jsonError(
+    if (
+      !authData.user
+    ) {
+      return errorResponse(
         'Supabase did not return the created user.',
         500,
       );
@@ -411,33 +392,54 @@ export async function POST(request: Request) {
     createdAuthUserId =
       authData.user.id;
 
+    /* ========================================================
+       8. CREATE TEAM MEMBERS RECORD
+    ======================================================== */
+
     /*
-     * ========================================================
-     * 9. CREATE TEAM MEMBER RECORD
-     * ========================================================
+     * Keep this payload as a separate object.
      *
-     * The Auth account and team_members record are intentionally
-     * created together.
+     * The cast prevents TypeScript from incorrectly inferring
+     * the Supabase insert argument as `never[]` when database
+     * generated types are not installed.
      */
+    const teamMemberPayload:
+      Record<
+        string,
+        unknown
+      > = {
+      name,
+      role,
+      email,
+      active_projects:
+        activeProjects,
+      tasks_assigned:
+        tasksAssigned,
+      tasks_completed:
+        tasksCompleted,
+      availability,
+      utilization,
+    };
+
+    console.log(
+      'Creating team member:',
+      {
+        ...teamMemberPayload,
+        /*
+         * Never log the password.
+         */
+      },
+    );
+
     const {
       data: member,
       error: memberError,
     } =
-      await adminSupabase
+      await supabaseAdmin
         .from('team_members')
-        .insert({
-          name,
-          role,
-          email,
-          active_projects:
-            activeProjects,
-          tasks_assigned:
-            tasksAssigned,
-          tasks_completed:
-            tasksCompleted,
-          availability,
-          utilization,
-        })
+        .insert(
+          teamMemberPayload,
+        )
         .select('*')
         .single();
 
@@ -456,39 +458,40 @@ export async function POST(request: Request) {
         },
       );
 
-      /*
-       * ------------------------------------------------------
-       * ROLLBACK AUTH ACCOUNT
-       * ------------------------------------------------------
-       *
-       * We do not want an Auth account without a corresponding
-       * team member record.
-       */
+      /* ======================================================
+         9. ROLLBACK AUTH USER
+      ====================================================== */
+
       try {
-        await adminSupabase.auth.admin.deleteUser(
+        await supabaseAdmin.auth.admin.deleteUser(
           authData.user.id,
         );
-      } catch (rollbackError) {
+
+        createdAuthUserId =
+          null;
+      } catch (
+        rollbackError
+      ) {
         console.error(
-          'Failed to rollback Auth user after team member insert failed:',
+          'Failed to rollback Auth user:',
           rollbackError,
         );
       }
 
-      createdAuthUserId = null;
-
-      return jsonError(
+      return errorResponse(
         memberError.message ||
           'Failed to create the team member record.',
         400,
       );
     }
 
-    /*
-     * ========================================================
-     * 10. SUCCESS
-     * ========================================================
-     */
+    /* ========================================================
+       10. SUCCESS
+    ======================================================== */
+
+    createdAuthUserId =
+      null;
+
     return NextResponse.json(
       {
         success: true,
@@ -504,35 +507,32 @@ export async function POST(request: Request) {
     );
   } catch (error: any) {
     console.error(
-      'Create team account route error:',
+      'Create team account error:',
       error,
     );
 
-    /*
-     * ========================================================
-     * SAFETY ROLLBACK
-     * ========================================================
-     *
-     * If something unexpected happens after Auth creation,
-     * remove the orphaned Auth user.
-     */
+    /* ========================================================
+       11. FINAL ROLLBACK
+    ======================================================== */
+
     if (
-      createdAuthUserId &&
-      adminSupabase
+      createdAuthUserId
     ) {
       try {
-        await adminSupabase.auth.admin.deleteUser(
+        await supabaseAdmin.auth.admin.deleteUser(
           createdAuthUserId,
         );
-      } catch (rollbackError) {
+      } catch (
+        rollbackError
+      ) {
         console.error(
-          'Unexpected-error rollback failed:',
+          'Final Auth rollback failed:',
           rollbackError,
         );
       }
     }
 
-    return jsonError(
+    return errorResponse(
       error?.message ||
         'Failed to create team account.',
       500,
