@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import CalBooking from '@/components/cal-booking'
 
 import {
   Plus,
@@ -10,7 +9,6 @@ import {
   Calendar,
   CheckCircle,
   FileText,
-  Video,
   TrendingUp,
   DollarSign,
   Trash2,
@@ -146,13 +144,6 @@ const calEvents: CalEvent[] = [
 ]
 
 // ============================================================
-// CAL.COM QUICK BOOKING
-// ============================================================
-
-const CAL_BOOKING_URL =
-  'https://cal.com/social-growth-sprint-30-min'
-
-// ============================================================
 // CALL TYPES
 // ============================================================
 
@@ -179,15 +170,9 @@ const callTypeMeta: Record<
   'Website Roadmap Call': {
     duration: '60 min',
     color: 'from-emerald-500 to-teal-500',
-    icon: Video,
+    icon: PhoneCall,
   },
 }
-
-const callTypes: CallType[] = [
-  'Social Growth Sprint',
-  'Brand Clarity Session',
-  'Website Roadmap Call',
-]
 
 // ============================================================
 // DISCOVERY OUTCOMES
@@ -325,7 +310,9 @@ export default function DiscoveryCallsPage() {
     React.useState('')
 
   const [bookingFilter, setBookingFilter] =
-    React.useState<'pending' | 'all' | 'upcoming' | 'completed' | 'paid'>('pending')
+    React.useState<
+      'pending' | 'all' | 'upcoming' | 'completed' | 'paid'
+    >('pending')
 
   const [bookingEditOpen, setBookingEditOpen] =
     React.useState(false)
@@ -388,13 +375,6 @@ export default function DiscoveryCallsPage() {
 
   const [emailMessage, setEmailMessage] =
     React.useState('')
-
-  // ==========================================================
-  // CAL.COM DIALOG
-  // ==========================================================
-
-  const [bookingOpen, setBookingOpen] =
-    React.useState(false)
 
   // ==========================================================
   // NOTES DIALOG
@@ -513,104 +493,369 @@ export default function DiscoveryCallsPage() {
     ).length
 
   // ==========================================================
-  // WEBSITE BOOKING REQUEST PIPELINE
+  // BOOKING STATUS HELPERS
   // ==========================================================
 
-  const normalizeBookingStatus = (status?: string | null) =>
-    (status || 'pending').toLowerCase().replace(/\s+/g, '_')
+  const normalizeBookingStatus = (
+    status?: string | null,
+  ) =>
+    (status || 'pending')
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+
+  const isCompletedBooking = (
+    booking: WebsiteBooking,
+  ) => {
+    const status =
+      normalizeBookingStatus(
+        booking.status,
+      )
+
+    return (
+      status === 'completed' ||
+      status === 'paid' ||
+      status === 'paid_ready'
+    )
+  }
+
+  const isPaidBooking = (
+    booking: WebsiteBooking,
+  ) => {
+    const paymentStatus =
+      normalizeBookingStatus(
+        booking.payment_status,
+      )
+
+    const status =
+      normalizeBookingStatus(
+        booking.status,
+      )
+
+    return (
+      isCompletedBooking(booking) &&
+      (
+        paymentStatus === 'paid' ||
+        status === 'paid' ||
+        status === 'paid_ready'
+      )
+    )
+  }
+
+  // ==========================================================
+  // WEBSITE BOOKING PIPELINE
+  // ==========================================================
 
   const pendingBookingRequests =
-    bookingRequests.filter((booking) => {
-      const status = normalizeBookingStatus(booking.status)
-      return status === 'pending' || status === 'booking_requested'
-    })
+    bookingRequests.filter(
+      (booking) => {
+        const status =
+          normalizeBookingStatus(
+            booking.status,
+          )
 
-  const filteredBookingRequests =
-    bookingRequests.filter((booking) => {
-      const status = normalizeBookingStatus(booking.status)
+        return (
+          status === 'pending' ||
+          status === 'booking_requested'
+        )
+      },
+    )
 
-      if (bookingFilter === 'all') return true
+  const upcomingBookingRequests =
+    bookingRequests.filter(
+      (booking) => {
+        const status =
+          normalizeBookingStatus(
+            booking.status,
+          )
 
-      if (bookingFilter === 'pending') {
-        return status === 'pending' || status === 'booking_requested'
-      }
-
-      if (bookingFilter === 'upcoming') {
         return (
           status === 'scheduled' ||
           status === 'upcoming' ||
           status === 'booking_confirmed'
         )
-      }
+      },
+    )
 
-      if (bookingFilter === 'completed') {
-        return status === 'completed'
-      }
+  const completedBookingRequests =
+    bookingRequests.filter(
+      (booking) =>
+        isCompletedBooking(booking),
+    )
 
-      if (bookingFilter === 'paid') {
-        return (
-          normalizeBookingStatus(booking.payment_status) === 'paid' ||
-          status === 'paid' ||
-          status === 'paid_ready'
-        )
-      }
+  const paidBookingRequests =
+    bookingRequests.filter(
+      (booking) =>
+        isPaidBooking(booking),
+    )
 
-      return true
-    })
+  const totalPaidAmount =
+    paidBookingRequests.reduce(
+      (total, booking) =>
+        total +
+        Number(
+          booking.service_price || 0,
+        ),
+      0,
+    )
+
+  const filteredBookingRequests =
+    bookingRequests.filter(
+      (booking) => {
+        const status =
+          normalizeBookingStatus(
+            booking.status,
+          )
+
+        if (
+          bookingFilter === 'all'
+        ) {
+          return ![
+            'cancelled',
+            'canceled',
+            'rejected',
+          ].includes(status)
+        }
+
+        if (
+          bookingFilter === 'pending'
+        ) {
+          return (
+            status === 'pending' ||
+            status === 'booking_requested'
+          )
+        }
+
+        if (
+          bookingFilter === 'upcoming'
+        ) {
+          return (
+            status === 'scheduled' ||
+            status === 'upcoming' ||
+            status === 'booking_confirmed'
+          )
+        }
+
+        if (
+          bookingFilter === 'completed'
+        ) {
+          return isCompletedBooking(
+            booking,
+          )
+        }
+
+        if (
+          bookingFilter === 'paid'
+        ) {
+          return isPaidBooking(
+            booking,
+          )
+        }
+
+        return true
+      },
+    )
 
   const bookingPipelineCounts = {
-    requests: pendingBookingRequests.length,
-    total: bookingRequests.filter((booking) => {
-      const status = normalizeBookingStatus(booking.status)
-      return !['cancelled', 'canceled', 'rejected'].includes(status)
-    }).length,
-    upcoming: bookingRequests.filter((booking) => {
-      const status = normalizeBookingStatus(booking.status)
-      return ['scheduled', 'upcoming', 'booking_confirmed'].includes(status)
-    }).length,
-    completed: bookingRequests.filter(
-      (booking) =>
-        normalizeBookingStatus(booking.status) === 'completed',
-    ).length,
-    paid: bookingRequests.filter(
-      (booking) =>
-        normalizeBookingStatus(booking.payment_status) === 'paid' ||
-        ['paid', 'paid_ready'].includes(normalizeBookingStatus(booking.status)),
-    ).length,
+    requests:
+      pendingBookingRequests.length,
+
+    total:
+      bookingRequests.filter(
+        (booking) => {
+          const status =
+            normalizeBookingStatus(
+              booking.status,
+            )
+
+          return ![
+            'cancelled',
+            'canceled',
+            'rejected',
+          ].includes(status)
+        },
+      ).length,
+
+    upcoming:
+      upcomingBookingRequests.length,
+
+    completed:
+      completedBookingRequests.length,
+
+    paid:
+      paidBookingRequests.length,
   }
 
   // ==========================================================
-  // WEBSITE BOOKING REQUEST CRUD
+  // BOOKING STATUS UPDATE
+  // ==========================================================
+
+  async function updateBookingPipelineStatus(
+    booking: WebsiteBooking,
+    newStatus: string,
+  ) {
+    try {
+      let paymentStatus =
+        booking.payment_status ||
+        'Unpaid'
+
+      /*
+       * Paid Session means:
+       *
+       * 1. The booking is completed.
+       * 2. Payment is Paid.
+       *
+       * Selecting Completed does NOT automatically
+       * mark the client as paid.
+       */
+
+      if (
+        newStatus === 'paid'
+      ) {
+        paymentStatus = 'Paid'
+      }
+
+      const { error } =
+        await supabase
+          .from('discovery_bookings')
+          .update({
+            status: newStatus,
+            payment_status:
+              paymentStatus,
+          })
+          .eq(
+            'id',
+            booking.id,
+          )
+
+      if (error) {
+        throw error
+      }
+
+      toast.success(
+        'Booking stage updated.',
+        {
+          description:
+            getBookingStatusLabel(
+              newStatus,
+            ),
+        },
+      )
+
+      await fetchBookingRequests()
+    } catch (err: any) {
+      console.error(
+        'UPDATE BOOKING STATUS ERROR:',
+        err,
+      )
+
+      toast.error(
+        'Failed to update booking status',
+        {
+          description:
+            err?.message ||
+            'Unable to update the booking stage.',
+        },
+      )
+    }
+  }
+
+  // ==========================================================
+  // BOOKING STATUS LABEL
+  // ==========================================================
+
+  function getBookingStatusLabel(
+    status?: string | null,
+  ) {
+    const normalized =
+      normalizeBookingStatus(
+        status,
+      )
+
+    const labels: Record<
+      string,
+      string
+    > = {
+      pending: 'Booking Request',
+      booking_requested:
+        'Booking Request',
+      booking_sent:
+        'Booking Email Sent',
+      scheduled: 'Upcoming',
+      upcoming: 'Upcoming',
+      booking_confirmed:
+        'Upcoming',
+      completed: 'Completed',
+      paid: 'Paid Session',
+      paid_ready:
+        'Paid Session',
+      cancelled: 'Cancelled',
+      canceled: 'Cancelled',
+      rejected: 'Rejected',
+    }
+
+    return (
+      labels[normalized] ||
+      (status || 'Pending')
+        .replace(/_/g, ' ')
+    )
+  }
+
+  // ==========================================================
+  // WEBSITE BOOKING CRUD
   // ==========================================================
 
   function openAddBooking() {
     setEditingBooking(null)
-    setBookingForm({ ...emptyBookingForm })
+
+    setBookingForm({
+      ...emptyBookingForm,
+    })
+
     setBookingEditOpen(true)
   }
 
-  function openEditBooking(booking: WebsiteBooking) {
+  function openEditBooking(
+    booking: WebsiteBooking,
+  ) {
     setEditingBooking(booking)
+
     setBookingForm({
       name: booking.name || '',
       email: booking.email || '',
       phone: booking.phone || '',
       company: booking.company || '',
       website: booking.website || '',
-      service_name: booking.service_name || 'Social Growth Sprint',
-      service_price: String(booking.service_price ?? 300),
+      service_name:
+        booking.service_name ||
+        'Social Growth Sprint',
+      service_price: String(
+        booking.service_price ??
+          300,
+      ),
       date: booking.date || '',
       time: booking.time || '',
-      contact_method: booking.contact_method || 'Video call',
+      contact_method:
+        booking.contact_method ||
+        'Video call',
       budget: booking.budget || '',
-      timeline: booking.timeline || '',
-      goals: Array.isArray(booking.goals)
-        ? booking.goals.join(', ')
-        : '',
-      notes: booking.notes || '',
-      status: booking.status || 'pending',
-      payment_status: booking.payment_status || 'Unpaid',
+      timeline:
+        booking.timeline || '',
+      goals:
+        Array.isArray(
+          booking.goals,
+        )
+          ? booking.goals.join(', ')
+          : '',
+      notes:
+        booking.notes || '',
+      status:
+        booking.status ||
+        'pending',
+      payment_status:
+        booking.payment_status ||
+        'Unpaid',
     })
+
     setBookingEditOpen(true)
   }
 
@@ -619,8 +864,14 @@ export default function DiscoveryCallsPage() {
   ) {
     e.preventDefault()
 
-    if (!bookingForm.name.trim() || !bookingForm.email.trim()) {
-      toast.error('Name and email are required.')
+    if (
+      !bookingForm.name.trim() ||
+      !bookingForm.email.trim()
+    ) {
+      toast.error(
+        'Name and email are required.',
+      )
+
       return
     }
 
@@ -628,37 +879,92 @@ export default function DiscoveryCallsPage() {
 
     try {
       const payload = {
-        name: bookingForm.name.trim(),
-        email: bookingForm.email.trim(),
-        phone: bookingForm.phone.trim() || null,
-        company: bookingForm.company.trim() || null,
-        website: bookingForm.website.trim() || null,
-        service_name: bookingForm.service_name,
-        service_price: Number(bookingForm.service_price) || 0,
-        date: bookingForm.date || null,
-        time: bookingForm.time || null,
-        contact_method: bookingForm.contact_method || null,
-        budget: bookingForm.budget || null,
-        timeline: bookingForm.timeline || null,
-        goals: bookingForm.goals
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        notes: bookingForm.notes.trim() || null,
-        status: bookingForm.status,
-        payment_status: bookingForm.payment_status,
+        name:
+          bookingForm.name.trim(),
+
+        email:
+          bookingForm.email.trim(),
+
+        phone:
+          bookingForm.phone.trim() ||
+          null,
+
+        company:
+          bookingForm.company.trim() ||
+          null,
+
+        website:
+          bookingForm.website.trim() ||
+          null,
+
+        service_name:
+          bookingForm.service_name,
+
+        service_price:
+          Number(
+            bookingForm.service_price,
+          ) || 0,
+
+        date:
+          bookingForm.date ||
+          null,
+
+        time:
+          bookingForm.time ||
+          null,
+
+        contact_method:
+          bookingForm.contact_method ||
+          null,
+
+        budget:
+          bookingForm.budget ||
+          null,
+
+        timeline:
+          bookingForm.timeline ||
+          null,
+
+        goals:
+          bookingForm.goals
+            .split(',')
+            .map(
+              (item) =>
+                item.trim(),
+            )
+            .filter(Boolean),
+
+        notes:
+          bookingForm.notes.trim() ||
+          null,
+
+        status:
+          bookingForm.status,
+
+        payment_status:
+          bookingForm.payment_status,
       }
 
-      const { error } = editingBooking
-        ? await supabase
-            .from('discovery_bookings')
-            .update(payload)
-            .eq('id', editingBooking.id)
-        : await supabase
-            .from('discovery_bookings')
-            .insert(payload)
+      const { error } =
+        editingBooking
+          ? await supabase
+              .from(
+                'discovery_bookings',
+              )
+              .update(payload)
+              .eq(
+                'id',
+                editingBooking.id,
+              )
+          : await supabase
+              .from(
+                'discovery_bookings',
+              )
+              .insert(payload)
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
       toast.success(
         editingBooking
@@ -667,46 +973,84 @@ export default function DiscoveryCallsPage() {
       )
 
       setBookingEditOpen(false)
+
       setEditingBooking(null)
-      setBookingForm({ ...emptyBookingForm })
+
+      setBookingForm({
+        ...emptyBookingForm,
+      })
+
       await fetchBookingRequests()
     } catch (err: any) {
-      console.error('SAVE BOOKING REQUEST ERROR:', err)
-      toast.error('Failed to save booking request', {
-        description:
-          err?.message || 'Unable to save the booking request.',
-      })
+      console.error(
+        'SAVE BOOKING REQUEST ERROR:',
+        err,
+      )
+
+      toast.error(
+        'Failed to save booking request',
+        {
+          description:
+            err?.message ||
+            'Unable to save the booking request.',
+        },
+      )
     } finally {
       setSavingBooking(false)
     }
   }
 
-  async function handleDeleteBookingRequest(id: string) {
-    if (!window.confirm('Delete this booking request? This cannot be undone.')) {
+  async function handleDeleteBookingRequest(
+    id: string,
+  ) {
+    if (
+      !window.confirm(
+        'Delete this booking request? This cannot be undone.',
+      )
+    ) {
       return
     }
 
     try {
-      const { error } = await supabase
-        .from('discovery_bookings')
-        .delete()
-        .eq('id', id)
+      const { error } =
+        await supabase
+          .from(
+            'discovery_bookings',
+          )
+          .delete()
+          .eq(
+            'id',
+            id,
+          )
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
-      toast.success('Booking request deleted.')
+      toast.success(
+        'Booking request deleted.',
+      )
+
       await fetchBookingRequests()
     } catch (err: any) {
-      console.error('DELETE BOOKING REQUEST ERROR:', err)
-      toast.error('Failed to delete booking request', {
-        description:
-          err?.message || 'Unable to delete the booking request.',
-      })
+      console.error(
+        'DELETE BOOKING REQUEST ERROR:',
+        err,
+      )
+
+      toast.error(
+        'Failed to delete booking request',
+        {
+          description:
+            err?.message ||
+            'Unable to delete the booking request.',
+        },
+      )
     }
   }
 
   // ==========================================================
-  // OPEN CLIENT DETAILS
+  // CLIENT DETAILS
   // ==========================================================
 
   function openClientDetails(
@@ -717,7 +1061,7 @@ export default function DiscoveryCallsPage() {
   }
 
   // ==========================================================
-  // OPEN Proceed for Booking
+  // PROCEED FOR BOOKING
   // ==========================================================
 
   function openProceedToBooking(
@@ -732,7 +1076,9 @@ export default function DiscoveryCallsPage() {
           booking.service_name,
       )
 
-    const event = matchingEvent || calEvents[0]
+    const event =
+      matchingEvent ||
+      calEvents[0]
 
     setSelectedCalEvent(event)
 
@@ -741,16 +1087,26 @@ export default function DiscoveryCallsPage() {
     )
 
     setEmailMessage(
-      `Hi ${booking.name},\n\n` +
-      `Thank you for reaching out to Nexora Studio.\n\n` +
-      `We've reviewed your discovery call request and we're happy to invite you to schedule your ${event.name}.\n\n` +
-      `Session: ${event.name}\n` +
-      `Duration: ${event.duration}\n\n` +
-      `Please choose the date and time that works best for you using the booking link below.\n\n` +
-      `BOOK YOUR DISCOVERY CALL\n${event.url}\n\n` +
-      `Once you've selected your schedule, Cal.com will automatically send your calendar confirmation.\n\n` +
-      `We look forward to speaking with you!\n\n` +
-      `Best regards,\nNexora Studio`,
+      `Hi ${booking.name},
+
+Thank you for reaching out to Nexora Studio.
+
+We've reviewed your discovery call request and we're happy to invite you to schedule your ${event.name}.
+
+Session: ${event.name}
+Duration: ${event.duration}
+
+Please choose the date and time that works best for you using the booking link below.
+
+BOOK YOUR DISCOVERY CALL
+${event.url}
+
+Once you've selected your schedule, Cal.com will automatically send your calendar confirmation.
+
+We look forward to speaking with you!
+
+Best regards,
+Nexora Studio`,
     )
 
     setProceedOpen(true)
@@ -780,95 +1136,96 @@ export default function DiscoveryCallsPage() {
     setSendingBookingEmail(true)
 
     try {
-      /*
-       * This calls the admin project's
-       *
-       * /api/email/send-booking
-       *
-       * route.
-       *
-       * We will create that API route in the
-       * next step using your existing Resend setup.
-       */
+      const response =
+        await fetch(
+          '/api/email/send-booking',
+          {
+            method: 'POST',
 
-      const response = await fetch(
-        '/api/email/send-booking',
-        {
-          method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
 
-          headers: {
-            'Content-Type':
-              'application/json',
+            body: JSON.stringify({
+              client: {
+                id:
+                  selectedClient.id,
+
+                name:
+                  selectedClient.name,
+
+                email:
+                  selectedClient.email,
+
+                phone:
+                  selectedClient.phone,
+
+                company:
+                  selectedClient.company,
+
+                website:
+                  selectedClient.website,
+              },
+
+              booking: {
+                serviceName:
+                  selectedClient.service_name ||
+                  selectedCalEvent.name,
+
+                servicePrice:
+                  selectedClient.service_price ||
+                  selectedCalEvent.price,
+
+                requestedDate:
+                  selectedClient.date,
+
+                requestedTime:
+                  selectedClient.time,
+
+                contactMethod:
+                  selectedClient.contact_method,
+
+                budget:
+                  selectedClient.budget,
+
+                timeline:
+                  selectedClient.timeline,
+
+                goals:
+                  selectedClient.goals,
+
+                notes:
+                  selectedClient.notes,
+              },
+
+              email: {
+                subject:
+                  emailSubject,
+
+                message:
+                  emailMessage,
+              },
+
+              calEvent: {
+                id:
+                  selectedCalEvent.id,
+
+                name:
+                  selectedCalEvent.name,
+
+                duration:
+                  selectedCalEvent.duration,
+
+                url:
+                  selectedCalEvent.url,
+
+                price:
+                  selectedCalEvent.price,
+              },
+            }),
           },
-
-          body: JSON.stringify({
-            client: {
-              id: selectedClient.id,
-              name: selectedClient.name,
-              email: selectedClient.email,
-              phone:
-                selectedClient.phone,
-              company:
-                selectedClient.company,
-              website:
-                selectedClient.website,
-            },
-
-            booking: {
-              serviceName:
-                selectedClient.service_name ||
-                selectedCalEvent.name,
-
-              servicePrice:
-                selectedClient.service_price ||
-                selectedCalEvent.price,
-
-              requestedDate:
-                selectedClient.date,
-
-              requestedTime:
-                selectedClient.time,
-
-              contactMethod:
-                selectedClient.contact_method,
-
-              budget:
-                selectedClient.budget,
-
-              timeline:
-                selectedClient.timeline,
-
-              goals:
-                selectedClient.goals,
-
-              notes:
-                selectedClient.notes,
-            },
-
-            email: {
-              subject: emailSubject,
-              message: emailMessage,
-            },
-
-            calEvent: {
-              id:
-                selectedCalEvent.id,
-
-              name:
-                selectedCalEvent.name,
-
-              duration:
-                selectedCalEvent.duration,
-
-              url:
-                selectedCalEvent.url,
-
-              price:
-                selectedCalEvent.price,
-            },
-          }),
-        },
-      )
+        )
 
       const result =
         await response.json()
@@ -880,14 +1237,12 @@ export default function DiscoveryCallsPage() {
         )
       }
 
-      // ======================================================
-      // MARK WEBSITE REQUEST AS BOOKING SENT
-      // ======================================================
-
       const {
         error: updateError,
       } = await supabase
-        .from('discovery_bookings')
+        .from(
+          'discovery_bookings',
+        )
         .update({
           status:
             'booking_sent',
@@ -902,11 +1257,6 @@ export default function DiscoveryCallsPage() {
           'BOOKING STATUS UPDATE ERROR:',
           updateError,
         )
-
-        /*
-         * The email was still sent successfully,
-         * so we don't fail the whole operation.
-         */
       }
 
       toast.success(
@@ -942,26 +1292,6 @@ export default function DiscoveryCallsPage() {
   }
 
   // ==========================================================
-  // OPEN CAL.COM
-  // ==========================================================
-
-  function openCalBooking() {
-    setBookingOpen(true)
-  }
-
-  // ==========================================================
-  // OPEN CAL.COM EXTERNAL
-  // ==========================================================
-
-  function openCalExternally() {
-    window.open(
-      CAL_BOOKING_URL,
-      '_blank',
-      'noopener,noreferrer',
-    )
-  }
-
-  // ==========================================================
   // NOTES
   // ==========================================================
 
@@ -982,7 +1312,9 @@ export default function DiscoveryCallsPage() {
   ) {
     e.preventDefault()
 
-    if (!editingCall) return
+    if (!editingCall) {
+      return
+    }
 
     setSavingNotes(true)
 
@@ -1045,7 +1377,9 @@ export default function DiscoveryCallsPage() {
   ) {
     e.preventDefault()
 
-    if (!editingCall) return
+    if (!editingCall) {
+      return
+    }
 
     if (!outcome) {
       toast.error(
@@ -1108,12 +1442,20 @@ export default function DiscoveryCallsPage() {
   }
 
   // ==========================================================
-  // DELETE
+  // DELETE DISCOVERY CALL
   // ==========================================================
 
   async function handleDelete(
     id: string,
   ) {
+    if (
+      !window.confirm(
+        'Delete this discovery call? This cannot be undone.',
+      )
+    ) {
+      return
+    }
+
     try {
       await deleteDiscoveryCall(id)
 
@@ -1146,9 +1488,12 @@ export default function DiscoveryCallsPage() {
   function formatDate(
     value?: string | null,
   ) {
-    if (!value) return 'Not selected'
+    if (!value) {
+      return 'Not selected'
+    }
 
-    const date = new Date(value)
+    const date =
+      new Date(value)
 
     if (
       Number.isNaN(
@@ -1172,9 +1517,28 @@ export default function DiscoveryCallsPage() {
   function formatTime(
     value?: string | null,
   ) {
-    if (!value) return ''
+    if (!value) {
+      return ''
+    }
 
-    const date = new Date(value)
+    /*
+     * Website booking time may already be
+     * a normal time string such as 10:00 AM.
+     *
+     * Do not try to convert it through Date
+     * unless it actually looks like a date.
+     */
+
+    if (
+      value.includes(':') &&
+      !value.includes('T') &&
+      !value.includes('-')
+    ) {
+      return value
+    }
+
+    const date =
+      new Date(value)
 
     if (
       Number.isNaN(
@@ -1222,7 +1586,9 @@ export default function DiscoveryCallsPage() {
         )
 
       return {
-        outcome: parts[0],
+        outcome:
+          parts[0],
+
         nextStep:
           parts
             .slice(1)
@@ -1244,21 +1610,21 @@ export default function DiscoveryCallsPage() {
     <DashboardShell>
       <PageHeader
         title="Discovery Calls"
-        description="Manage website booking requests, client approvals, Cal.com scheduling, discovery calls, and outcomes."
+        description="Manage website booking requests from the initial request through scheduling, completion, and payment."
       >
         <Button
           size="sm"
           onClick={
-            openCalBooking
+            openAddBooking
           }
         >
           <Plus className="mr-1.5 h-4 w-4" />
-          Book Call
+          Add Booking
         </Button>
       </PageHeader>
 
       {/* ======================================================
-          BOOKING PIPELINE KPI
+          WEBSITE BOOKING PIPELINE KPI
       ====================================================== */}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -1266,62 +1632,138 @@ export default function DiscoveryCallsPage() {
           {
             key: 'pending' as const,
             label: 'Booking Requests',
-            value: bookingPipelineCounts.requests,
+            value:
+              bookingPipelineCounts.requests,
             icon: Users,
-            accent: 'text-orange-600 bg-orange-100 dark:bg-orange-500/15 dark:text-orange-400',
+            accent:
+              'text-orange-600 bg-orange-100 dark:bg-orange-500/15 dark:text-orange-400',
           },
+
           {
             key: 'all' as const,
             label: 'Total Calls',
-            value: bookingPipelineCounts.total,
+            value:
+              bookingPipelineCounts.total,
             icon: PhoneCall,
-            accent: undefined,
+            accent:
+              undefined,
           },
+
           {
             key: 'upcoming' as const,
             label: 'Upcoming',
-            value: bookingPipelineCounts.upcoming,
+            value:
+              bookingPipelineCounts.upcoming,
             icon: Calendar,
-            accent: 'text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400',
+            accent:
+              'text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400',
           },
+
           {
             key: 'completed' as const,
             label: 'Completed',
-            value: bookingPipelineCounts.completed,
+            value:
+              bookingPipelineCounts.completed,
             icon: CheckCircle,
-            accent: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400',
+            accent:
+              'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-400',
           },
+
           {
             key: 'paid' as const,
             label: 'Paid Sessions',
-            value: bookingPipelineCounts.paid,
+            value:
+              bookingPipelineCounts.paid,
             icon: DollarSign,
-            accent: 'text-violet-600 bg-violet-100 dark:bg-violet-500/15 dark:text-violet-400',
+            accent:
+              'text-violet-600 bg-violet-100 dark:bg-violet-500/15 dark:text-violet-400',
           },
-        ].map((item, index) => {
-          const Icon = item.icon
+        ].map(
+          (
+            item,
+            index,
+          ) => {
+            const Icon =
+              item.icon
 
-          return (
-            <button
-              key={item.key}
-              type="button"
-              className={cn(
-                'rounded-2xl text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/30',
-                bookingFilter === item.key && 'ring-2 ring-primary/40',
-              )}
-              onClick={() => setBookingFilter(item.key)}
-            >
-              <KpiCard
-                label={item.label}
-                value={String(item.value)}
-                icon={Icon}
-                accent={item.accent}
-                index={index}
-              />
-            </button>
-          )
-        })}
+            return (
+              <button
+                key={
+                  item.key
+                }
+                type="button"
+                className={cn(
+                  'rounded-2xl text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/30',
+                  bookingFilter ===
+                    item.key &&
+                    'ring-2 ring-primary/40',
+                )}
+                onClick={() =>
+                  setBookingFilter(
+                    item.key,
+                  )
+                }
+              >
+                <KpiCard
+                  label={
+                    item.label
+                  }
+                  value={String(
+                    item.value,
+                  )}
+                  icon={Icon}
+                  accent={
+                    item.accent
+                  }
+                  index={
+                    index
+                  }
+                />
+              </button>
+            )
+          },
+        )}
       </div>
+
+      {/* ======================================================
+          PAID SESSION SUMMARY
+      ====================================================== */}
+
+      {bookingFilter ===
+        'paid' && (
+        <Card className="mt-4 overflow-hidden border-violet-500/20">
+          <CardContent className="p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">
+                  Paid Sessions Summary
+                </p>
+
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Completed sessions that have been marked as paid.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-violet-500/10 px-5 py-3 text-right">
+                <p className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                  Total Amount Collected
+                </p>
+
+                <p className="mt-1 text-2xl font-bold text-violet-700 dark:text-violet-300">
+                  ₱
+                  {totalPaidAmount.toLocaleString(
+                    'en-PH',
+                    {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    },
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ======================================================
           WEBSITE BOOKING REQUESTS
@@ -1335,8 +1777,12 @@ export default function DiscoveryCallsPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-pink-500 text-white">
                   <Users className="h-5 w-5" />
                 </div>
+
                 <div>
-                  <p className="font-semibold">Website Booking Requests</p>
+                  <p className="font-semibold">
+                    Website Booking Requests
+                  </p>
+
                   <p className="text-sm text-muted-foreground">
                     Manage every website booking from request through scheduled, completed, and paid.
                   </p>
@@ -1345,9 +1791,18 @@ export default function DiscoveryCallsPage() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="rounded-full bg-orange-500/10 px-3 py-1.5 text-xs font-semibold text-orange-600 dark:text-orange-400">
-                  {pendingBookingRequests.length} waiting for review
+                  {
+                    pendingBookingRequests.length
+                  }{' '}
+                  waiting for review
                 </div>
-                <Button size="sm" onClick={openAddBooking}>
+
+                <Button
+                  size="sm"
+                  onClick={
+                    openAddBooking
+                  }
+                >
                   <Plus className="mr-1.5 h-4 w-4" />
                   Add Booking
                 </Button>
@@ -1355,264 +1810,496 @@ export default function DiscoveryCallsPage() {
             </div>
           </div>
 
+          {/* ====================================================
+              FILTERS
+          ==================================================== */}
+
           <div className="border-b border-border px-5 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
+
               <span className="text-xs font-medium text-muted-foreground">
                 Filter:
               </span>
+
               {(
                 [
-                  ['pending', 'Booking Requests'],
-                  ['all', 'All Booked'],
-                  ['upcoming', 'Upcoming'],
-                  ['completed', 'Completed'],
-                  ['paid', 'Paid Sessions'],
+                  [
+                    'pending',
+                    'Booking Requests',
+                  ],
+                  [
+                    'all',
+                    'All Booked',
+                  ],
+                  [
+                    'upcoming',
+                    'Upcoming',
+                  ],
+                  [
+                    'completed',
+                    'Completed',
+                  ],
+                  [
+                    'paid',
+                    'Paid Sessions',
+                  ],
                 ] as const
-              ).map(([value, label]) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  variant={bookingFilter === value ? 'default' : 'outline'}
-                  className="h-8"
-                  onClick={() => setBookingFilter(value)}
-                >
-                  {label}
-                </Button>
-              ))}
+              ).map(
+                ([
+                  value,
+                  label,
+                ]) => (
+                  <Button
+                    key={
+                      value
+                    }
+                    size="sm"
+                    variant={
+                      bookingFilter ===
+                      value
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="h-8"
+                    onClick={() =>
+                      setBookingFilter(
+                        value,
+                      )
+                    }
+                  >
+                    {label}
+                  </Button>
+                ),
+              )}
             </div>
           </div>
+
+          {/* ====================================================
+              REQUEST CONTENT
+          ==================================================== */}
 
           <div className="p-5">
             {bookingRequestsLoading ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                {Array.from({ length: 2 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="animate-pulse rounded-2xl border border-border p-5"
-                  >
-                    <div className="h-5 w-40 rounded bg-muted" />
-                    <div className="mt-3 h-4 w-64 rounded bg-muted" />
-                    <div className="mt-5 h-20 rounded-lg bg-muted" />
-                  </div>
-                ))}
+                {Array.from(
+                  {
+                    length: 2,
+                  },
+                ).map(
+                  (
+                    _,
+                    index,
+                  ) => (
+                    <div
+                      key={
+                        index
+                      }
+                      className="animate-pulse rounded-2xl border border-border p-5"
+                    >
+                      <div className="h-5 w-40 rounded bg-muted" />
+
+                      <div className="mt-3 h-4 w-64 rounded bg-muted" />
+
+                      <div className="mt-5 h-20 rounded-lg bg-muted" />
+                    </div>
+                  ),
+                )}
               </div>
             ) : bookingRequestsError ? (
               <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-6 text-center">
                 <p className="font-semibold text-destructive">
                   Unable to load booking requests
                 </p>
+
                 <p className="mt-2 text-sm text-destructive/80">
-                  {bookingRequestsError}
+                  {
+                    bookingRequestsError
+                  }
                 </p>
+
                 <Button
                   variant="outline"
                   className="mt-4"
-                  onClick={fetchBookingRequests}
+                  onClick={
+                    fetchBookingRequests
+                  }
                 >
                   Try Again
                 </Button>
               </div>
-            ) : filteredBookingRequests.length === 0 ? (
+            ) : filteredBookingRequests.length ===
+              0 ? (
               <div className="py-12 text-center">
                 <Users className="mx-auto h-10 w-10 text-muted-foreground" />
+
                 <h3 className="mt-4 text-lg font-semibold">
                   No booking records in this stage
                 </h3>
+
                 <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
                   Use the filter above or add a booking request to begin the pipeline.
                 </p>
+
+                <Button
+                  className="mt-5"
+                  onClick={
+                    openAddBooking
+                  }
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Booking
+                </Button>
               </div>
             ) : (
               <div className="grid gap-4 lg:grid-cols-2">
-                {filteredBookingRequests.map((booking, index) => {
-                  const status = normalizeBookingStatus(booking.status)
-                  const displayStatus =
-                    status === 'booking_requested'
-                      ? 'Pending'
-                      : (booking.status || 'Pending').replace(/_/g, ' ')
+                {filteredBookingRequests.map(
+                  (
+                    booking,
+                    index,
+                  ) => {
+                    const status =
+                      normalizeBookingStatus(
+                        booking.status,
+                      )
 
-                  return (
-                    <motion.div
-                      key={booking.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <Card className="h-full border-border">
-                        <CardContent className="p-5">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                <Users className="h-5 w-5" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold">
-                                  {booking.name}
-                                </p>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {booking.email}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold capitalize">
-                              {displayStatus}
-                            </span>
-                          </div>
+                    const displayStatus =
+                      getBookingStatusLabel(
+                        booking.status,
+                      )
 
-                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                            <InfoItem
-                              icon={Sparkles}
-                              label="Service"
-                              value={booking.service_name || 'Not specified'}
-                            />
-                            <InfoItem
-                              icon={DollarSign}
-                              label="Session Fee"
-                              value={
-                                booking.service_price
-                                  ? `₱${booking.service_price}`
-                                  : 'Not specified'
-                              }
-                            />
-                            <InfoItem
-                              icon={Calendar}
-                              label="Preferred Date"
-                              value={formatDate(booking.date)}
-                            />
-                            <InfoItem
-                              icon={Clock}
-                              label="Preferred Time"
-                              value={booking.time || 'Not specified'}
-                            />
-                          </div>
+                    const paid =
+                      isPaidBooking(
+                        booking,
+                      )
 
-                          <div className="mt-4 rounded-xl bg-muted/40 p-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground">
-                                  Pipeline Stage
-                                </p>
-                                <p className="mt-1 text-sm font-semibold capitalize">
-                                  {displayStatus}
-                                </p>
+                    const completed =
+                      isCompletedBooking(
+                        booking,
+                      )
+
+                    return (
+                      <motion.div
+                        key={
+                          booking.id
+                        }
+                        initial={{
+                          opacity: 0,
+                          y: 10,
+                        }}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                        }}
+                        transition={{
+                          delay:
+                            index *
+                            0.05,
+                        }}
+                      >
+                        <Card className="h-full border-border">
+                          <CardContent className="p-5">
+                            {/* HEADER */}
+
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                  <Users className="h-5 w-5" />
+                                </div>
+
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold">
+                                    {
+                                      booking.name
+                                    }
+                                  </p>
+
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {
+                                      booking.email
+                                    }
+                                  </p>
+                                </div>
                               </div>
 
-                              <Select
-                                value={booking.status || 'pending'}
-                                onValueChange={async (value) => {
-                                  const { error } = await supabase
-                                    .from('discovery_bookings')
-                                    .update({
-                                      status: value,
-                                      payment_status:
-                                        value === 'paid'
-                                          ? 'Paid'
-                                          : booking.payment_status || 'Unpaid',
-                                    })
-                                    .eq('id', booking.id)
-
-                                  if (error) {
-                                    toast.error('Failed to update booking status', {
-                                      description: error.message,
-                                    })
-                                    return
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                <span
+                                  className={cn(
+                                    'rounded-full px-2.5 py-1 text-xs font-semibold capitalize',
+                                    completed &&
+                                      'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                                    !completed &&
+                                      status ===
+                                        'pending' &&
+                                      'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+                                    !completed &&
+                                      status !==
+                                        'pending' &&
+                                      'bg-muted',
+                                  )}
+                                >
+                                  {
+                                    displayStatus
                                   }
+                                </span>
 
-                                  toast.success('Booking stage updated.')
-                                  await fetchBookingRequests()
-                                }}
-                              >
-                                <SelectTrigger className="w-full sm:w-48">
-                                  <SelectValue placeholder="Update stage" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="pending">
-                                    Booking Request
-                                  </SelectItem>
-                                  <SelectItem value="booking_sent">
-                                    Booking Email Sent
-                                  </SelectItem>
-                                  <SelectItem value="scheduled">
-                                    Upcoming
-                                  </SelectItem>
-                                  <SelectItem value="completed">
+                                {paid && (
+                                  <span className="text-[11px] font-semibold text-violet-600 dark:text-violet-400">
+                                    PAID
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* BOOKING INFORMATION */}
+
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                              <InfoItem
+                                icon={
+                                  Sparkles
+                                }
+                                label="Service"
+                                value={
+                                  booking.service_name ||
+                                  'Not specified'
+                                }
+                              />
+
+                              <InfoItem
+                                icon={
+                                  DollarSign
+                                }
+                                label="Session Fee"
+                                value={
+                                  booking.service_price
+                                    ? `₱${Number(
+                                        booking.service_price,
+                                      ).toLocaleString(
+                                        'en-PH',
+                                      )}`
+                                    : 'Not specified'
+                                }
+                              />
+
+                              <InfoItem
+                                icon={
+                                  Calendar
+                                }
+                                label="Preferred Date"
+                                value={formatDate(
+                                  booking.date,
+                                )}
+                              />
+
+                              <InfoItem
+                                icon={
+                                  Clock
+                                }
+                                label="Preferred Time"
+                                value={
+                                  booking.time ||
+                                  'Not specified'
+                                }
+                              />
+                            </div>
+
+                            {/* PAYMENT INFO */}
+
+                            {completed && (
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl bg-emerald-500/5 p-3">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+
+                                    <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      Session Status
+                                    </p>
+                                  </div>
+
+                                  <p className="mt-1 text-sm font-semibold">
                                     Completed
-                                  </SelectItem>
-                                  <SelectItem value="paid">
-                                    Paid Session
-                                  </SelectItem>
-                                  <SelectItem value="cancelled">
-                                    Cancelled
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
+                                  </p>
+                                </div>
+
+                                <div className="rounded-xl bg-violet-500/5 p-3">
+                                  <div className="flex items-center gap-2">
+                                    <DollarSign className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+
+                                    <p className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                                      Payment
+                                    </p>
+                                  </div>
+
+                                  <p className="mt-1 text-sm font-semibold">
+                                    {
+                                      paid
+                                        ? 'Paid'
+                                        : 'Unpaid'
+                                    }
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* PIPELINE */}
+
+                            <div className="mt-4 rounded-xl bg-muted/40 p-3">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground">
+                                    Pipeline Stage
+                                  </p>
+
+                                  <p className="mt-1 text-sm font-semibold capitalize">
+                                    {
+                                      displayStatus
+                                    }
+                                  </p>
+                                </div>
+
+                                <Select
+                                  value={
+                                    status ===
+                                      'paid_ready'
+                                      ? 'paid'
+                                      : status
+                                  }
+                                  onValueChange={(
+                                    value,
+                                  ) =>
+                                    updateBookingPipelineStatus(
+                                      booking,
+                                      value,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full sm:w-48">
+                                    <SelectValue placeholder="Update stage" />
+                                  </SelectTrigger>
+
+                                  <SelectContent>
+                                    <SelectItem value="pending">
+                                      Booking Request
+                                    </SelectItem>
+
+                                    <SelectItem value="booking_sent">
+                                      Booking Email Sent
+                                    </SelectItem>
+
+                                    <SelectItem value="scheduled">
+                                      Upcoming
+                                    </SelectItem>
+
+                                    <SelectItem value="completed">
+                                      Completed
+                                    </SelectItem>
+
+                                    <SelectItem value="paid">
+                                      Paid Session
+                                    </SelectItem>
+
+                                    <SelectItem value="cancelled">
+                                      Cancelled
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
-                          </div>
 
-                          {booking.company && (
-                            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                              <Building2 className="h-4 w-4" />
-                              <span>{booking.company}</span>
+                            {/* COMPANY */}
+
+                            {booking.company && (
+                              <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                                <Building2 className="h-4 w-4" />
+
+                                <span>
+                                  {
+                                    booking.company
+                                  }
+                                </span>
+                              </div>
+                            )}
+
+                            {/* NOTES */}
+
+                            {booking.notes && (
+                              <div className="mt-4 rounded-xl bg-muted/50 p-3">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  Client Notes
+                                </p>
+
+                                <p className="mt-1 line-clamp-3 text-sm">
+                                  {
+                                    booking.notes
+                                  }
+                                </p>
+                              </div>
+                            )}
+
+                            {/* ACTION BUTTONS */}
+
+                            <div className="mt-5 flex flex-wrap gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  openClientDetails(
+                                    booking,
+                                  )
+                                }
+                              >
+                                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                View Details
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  openEditBooking(
+                                    booking,
+                                  )
+                                }
+                              >
+                                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                Edit
+                              </Button>
+
+                              {!completed && (
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={() =>
+                                    openProceedToBooking(
+                                      booking,
+                                    )
+                                  }
+                                >
+                                  <Calendar className="mr-1.5 h-3.5 w-3.5" />
+                                  Proceed for Booking
+                                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteBookingRequest(
+                                    booking.id,
+                                  )
+                                }
+                              >
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                Delete
+                              </Button>
                             </div>
-                          )}
-
-                          {booking.notes && (
-                            <div className="mt-4 rounded-xl bg-muted/50 p-3">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Client Notes
-                              </p>
-                              <p className="mt-1 line-clamp-3 text-sm">
-                                {booking.notes}
-                              </p>
-                            </div>
-                          )}
-
-                          <div className="mt-5 flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openClientDetails(booking)}
-                            >
-                              <Eye className="mr-1.5 h-3.5 w-3.5" />
-                              View Details
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditBooking(booking)}
-                            >
-                              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                              Edit
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => openProceedToBooking(booking)}
-                            >
-                              <Calendar className="mr-1.5 h-3.5 w-3.5" />
-                              Proceed for Booking
-                              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                handleDeleteBookingRequest(booking.id)
-                              }
-                            >
-                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                              Delete
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  )
-                })}
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    )
+                  },
+                )}
               </div>
             )}
           </div>
@@ -1620,61 +2307,7 @@ export default function DiscoveryCallsPage() {
       </Card>
 
       {/* ======================================================
-          CALL TYPES
-      ====================================================== */}
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        {(
-          Object.keys(
-            callTypeMeta,
-          ) as CallType[]
-        ).map((type) => {
-          const meta =
-            callTypeMeta[type]
-
-          const Icon =
-            meta.icon
-
-          const count =
-            calls.filter(
-              (call) =>
-                call.type === type,
-            ).length
-
-          return (
-            <Card key={type}>
-              <CardContent className="p-5">
-                <div
-                  className={cn(
-                    'mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br text-white',
-                    meta.color,
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                </div>
-
-                <p className="text-sm font-semibold">
-                  {type}
-                </p>
-
-                <div className="mt-1 flex items-center gap-3">
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {meta.duration}
-                  </span>
-
-                  <span className="text-xs text-muted-foreground">
-                    {count} booked
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* ======================================================
-          TABS
+          EXISTING DISCOVERY CALLS
       ====================================================== */}
 
       <Tabs
@@ -1701,21 +2334,33 @@ export default function DiscoveryCallsPage() {
         >
           {loading ? (
             <div className="grid gap-4 lg:grid-cols-2">
-              {Array.from({
-                length: 4,
-              }).map((_, index) => (
-                <Card key={index}>
-                  <CardContent className="p-5">
-                    <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+              {Array.from(
+                {
+                  length: 4,
+                },
+              ).map(
+                (
+                  _,
+                  index,
+                ) => (
+                  <Card
+                    key={
+                      index
+                    }
+                  >
+                    <CardContent className="p-5">
+                      <div className="h-5 w-40 animate-pulse rounded bg-muted" />
 
-                    <div className="mt-4 h-4 w-56 animate-pulse rounded bg-muted" />
+                      <div className="mt-4 h-4 w-56 animate-pulse rounded bg-muted" />
 
-                    <div className="mt-4 h-20 animate-pulse rounded-lg bg-muted" />
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="mt-4 h-20 animate-pulse rounded-lg bg-muted" />
+                    </CardContent>
+                  </Card>
+                ),
+              )}
             </div>
-          ) : upcoming.length === 0 ? (
+          ) : upcoming.length ===
+            0 ? (
             <Card>
               <CardContent className="py-16 text-center">
                 <Calendar className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -1725,24 +2370,17 @@ export default function DiscoveryCallsPage() {
                 </h3>
 
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Confirmed bookings from Cal.com will appear here once connected to your database.
+                  Confirmed discovery calls will appear here once connected to your database.
                 </p>
-
-                <Button
-                  className="mt-5"
-                  onClick={
-                    openCalBooking
-                  }
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Schedule a Call
-                </Button>
               </CardContent>
             </Card>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {upcoming.map(
-                (call, index) => {
+                (
+                  call,
+                  index,
+                ) => {
                   const meta =
                     callTypeMeta[
                       call.type as CallType
@@ -1753,7 +2391,9 @@ export default function DiscoveryCallsPage() {
 
                   return (
                     <motion.div
-                      key={call.id}
+                      key={
+                        call.id
+                      }
                       initial={{
                         opacity: 0,
                         y: 10,
@@ -1764,7 +2404,8 @@ export default function DiscoveryCallsPage() {
                       }}
                       transition={{
                         delay:
-                          index * 0.05,
+                          index *
+                          0.05,
                       }}
                     >
                       <Card>
@@ -1782,12 +2423,20 @@ export default function DiscoveryCallsPage() {
 
                               <div>
                                 <p className="text-sm font-semibold">
-                                  {call.clientName}
+                                  {
+                                    call.clientName
+                                  }
                                 </p>
 
                                 <p className="text-xs text-muted-foreground">
-                                  {call.type} ·{' '}
-                                  {call.duration} min
+                                  {
+                                    call.type
+                                  }{' '}
+                                  ·{' '}
+                                  {
+                                    call.duration
+                                  }{' '}
+                                  min
                                 </p>
                               </div>
                             </div>
@@ -1885,7 +2534,8 @@ export default function DiscoveryCallsPage() {
           value="completed"
           className="mt-4"
         >
-          {completed.length === 0 ? (
+          {completed.length ===
+          0 ? (
             <Card>
               <CardContent className="py-16 text-center">
                 <CheckCircle className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -1902,7 +2552,10 @@ export default function DiscoveryCallsPage() {
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {completed.map(
-                (call, index) => {
+                (
+                  call,
+                  index,
+                ) => {
                   const result =
                     formatOutcome(
                       call.outcome ||
@@ -1911,7 +2564,9 @@ export default function DiscoveryCallsPage() {
 
                   return (
                     <motion.div
-                      key={call.id}
+                      key={
+                        call.id
+                      }
                       initial={{
                         opacity: 0,
                         y: 10,
@@ -1922,7 +2577,8 @@ export default function DiscoveryCallsPage() {
                       }}
                       transition={{
                         delay:
-                          index * 0.05,
+                          index *
+                          0.05,
                       }}
                     >
                       <Card>
@@ -1930,11 +2586,16 @@ export default function DiscoveryCallsPage() {
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="text-sm font-semibold">
-                                {call.clientName}
+                                {
+                                  call.clientName
+                                }
                               </p>
 
                               <p className="text-xs text-muted-foreground">
-                                {call.type} ·{' '}
+                                {
+                                  call.type
+                                }{' '}
+                                ·{' '}
                                 {formatDate(
                                   call.date,
                                 )}
@@ -1958,7 +2619,9 @@ export default function DiscoveryCallsPage() {
                             </div>
 
                             <p className="mt-1 text-sm font-medium">
-                              {result.outcome}
+                              {
+                                result.outcome
+                              }
                             </p>
                           </div>
 
@@ -1973,7 +2636,9 @@ export default function DiscoveryCallsPage() {
                               </div>
 
                               <p className="mt-1 text-sm">
-                                {result.nextStep}
+                                {
+                                  result.nextStep
+                                }
                               </p>
                             </div>
                           )}
@@ -1985,7 +2650,9 @@ export default function DiscoveryCallsPage() {
                               </p>
 
                               <p className="mt-1 text-sm">
-                                {call.notes}
+                                {
+                                  call.notes
+                                }
                               </p>
                             </div>
                           )}
@@ -2016,12 +2683,16 @@ export default function DiscoveryCallsPage() {
       </Tabs>
 
       {/* ======================================================
-          ADD / EDIT WEBSITE BOOKING REQUEST DIALOG
+          ADD / EDIT WEBSITE BOOKING DIALOG
       ====================================================== */}
 
       <Dialog
-        open={bookingEditOpen}
-        onOpenChange={setBookingEditOpen}
+        open={
+          bookingEditOpen
+        }
+        onOpenChange={
+          setBookingEditOpen
+        }
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
@@ -2030,106 +2701,250 @@ export default function DiscoveryCallsPage() {
                 ? 'Edit Booking Request'
                 : 'Add Booking Request'}
             </DialogTitle>
+
             <p className="text-sm text-muted-foreground">
               Update the client details and move the request through the booking pipeline.
             </p>
           </DialogHeader>
 
-          <form onSubmit={handleSaveBooking} className="space-y-5">
+          <form
+            onSubmit={
+              handleSaveBooking
+            }
+            className="space-y-5"
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                ['name', 'Name', 'text'],
-                ['email', 'Email', 'email'],
-                ['phone', 'Phone', 'text'],
-                ['company', 'Company', 'text'],
-                ['website', 'Website', 'text'],
-                ['service_price', 'Session Fee', 'number'],
-                ['date', 'Date', 'date'],
-                ['time', 'Time', 'text'],
-                ['contact_method', 'Contact Method', 'text'],
-                ['budget', 'Budget', 'text'],
-                ['timeline', 'Timeline', 'text'],
-              ].map(([field, label, type]) => (
-                <div key={field} className="space-y-2">
-                  <Label htmlFor={`booking-${field}`}>{label}</Label>
-                  <Input
-                    id={`booking-${field}`}
-                    type={type}
-                    value={bookingForm[field as keyof typeof bookingForm]}
-                    onChange={(e) =>
-                      setBookingForm((current) => ({
-                        ...current,
-                        [field]: e.target.value,
-                      }))
+                [
+                  'name',
+                  'Name',
+                  'text',
+                ],
+                [
+                  'email',
+                  'Email',
+                  'email',
+                ],
+                [
+                  'phone',
+                  'Phone',
+                  'text',
+                ],
+                [
+                  'company',
+                  'Company',
+                  'text',
+                ],
+                [
+                  'website',
+                  'Website',
+                  'text',
+                ],
+                [
+                  'service_price',
+                  'Session Fee',
+                  'number',
+                ],
+                [
+                  'date',
+                  'Date',
+                  'date',
+                ],
+                [
+                  'time',
+                  'Time',
+                  'text',
+                ],
+                [
+                  'contact_method',
+                  'Contact Method',
+                  'text',
+                ],
+                [
+                  'budget',
+                  'Budget',
+                  'text',
+                ],
+                [
+                  'timeline',
+                  'Timeline',
+                  'text',
+                ],
+              ].map(
+                ([
+                  field,
+                  label,
+                  type,
+                ]) => (
+                  <div
+                    key={
+                      field
                     }
-                  />
-                </div>
-              ))}
+                    className="space-y-2"
+                  >
+                    <Label
+                      htmlFor={`booking-${field}`}
+                    >
+                      {
+                        label
+                      }
+                    </Label>
+
+                    <Input
+                      id={`booking-${field}`}
+                      type={
+                        type
+                      }
+                      value={
+                        bookingForm[
+                          field as keyof typeof bookingForm
+                        ]
+                      }
+                      onChange={(
+                        e,
+                      ) =>
+                        setBookingForm(
+                          (
+                            current,
+                          ) => ({
+                            ...current,
+                            [field]:
+                              e
+                                .target
+                                .value,
+                          }),
+                        )
+                      }
+                    />
+                  </div>
+                ),
+              )}
+
+              {/* SERVICE */}
 
               <div className="space-y-2">
-                <Label>Service</Label>
+                <Label>
+                  Service
+                </Label>
+
                 <Select
-                  value={bookingForm.service_name}
-                  onValueChange={(value) => {
-                    const event = calEvents.find(
-                      (item) => item.name === value,
+                  value={
+                    bookingForm.service_name
+                  }
+                  onValueChange={(
+                    value,
+                  ) => {
+                    const event =
+                      calEvents.find(
+                        (
+                          item,
+                        ) =>
+                          item.name ===
+                          value,
+                      )
+
+                    setBookingForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
+
+                        service_name:
+                          value,
+
+                        service_price:
+                          String(
+                            event?.price ??
+                              current.service_price,
+                          ),
+                      }),
                     )
-                    setBookingForm((current) => ({
-                      ...current,
-                      service_name: value,
-                      service_price: String(
-                        event?.price ?? current.service_price,
-                      ),
-                    }))
                   }}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
+
                   <SelectContent>
-                    {calEvents.map((event) => (
-                      <SelectItem key={event.id} value={event.name}>
-                        {event.name}
-                      </SelectItem>
-                    ))}
+                    {calEvents.map(
+                      (
+                        event,
+                      ) => (
+                        <SelectItem
+                          key={
+                            event.id
+                          }
+                          value={
+                            event.name
+                          }
+                        >
+                          {
+                            event.name
+                          }
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
+              {/* BOOKING STATUS */}
+
               <div className="space-y-2">
-                <Label>Booking Status</Label>
+                <Label>
+                  Booking Status
+                </Label>
+
                 <Select
-                  value={bookingForm.status}
-                  onValueChange={(value) =>
-                    setBookingForm((current) => ({
-                      ...current,
-                      status: value,
-                      payment_status:
-                        value === 'paid'
-                          ? 'Paid'
-                          : current.payment_status,
-                    }))
+                  value={
+                    bookingForm.status
+                  }
+                  onValueChange={(
+                    value,
+                  ) =>
+                    setBookingForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
+
+                        status:
+                          value,
+
+                        payment_status:
+                          value ===
+                          'paid'
+                            ? 'Paid'
+                            : current.payment_status,
+                      }),
+                    )
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
+
                   <SelectContent>
                     <SelectItem value="pending">
                       Booking Request
                     </SelectItem>
+
                     <SelectItem value="booking_sent">
                       Booking Email Sent
                     </SelectItem>
+
                     <SelectItem value="scheduled">
                       Upcoming
                     </SelectItem>
+
                     <SelectItem value="completed">
                       Completed
                     </SelectItem>
+
                     <SelectItem value="paid">
                       Paid Session
                     </SelectItem>
+
                     <SelectItem value="cancelled">
                       Cancelled
                     </SelectItem>
@@ -2137,60 +2952,114 @@ export default function DiscoveryCallsPage() {
                 </Select>
               </div>
 
+              {/* PAYMENT STATUS */}
+
               <div className="space-y-2">
-                <Label>Payment Status</Label>
+                <Label>
+                  Payment Status
+                </Label>
+
                 <Select
-                  value={bookingForm.payment_status}
-                  onValueChange={(value) =>
-                    setBookingForm((current) => ({
-                      ...current,
-                      payment_status: value,
-                      status:
-                        value === 'Paid'
-                          ? 'paid'
-                          : current.status,
-                    }))
+                  value={
+                    bookingForm.payment_status
+                  }
+                  onValueChange={(
+                    value,
+                  ) =>
+                    setBookingForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
+
+                        payment_status:
+                          value,
+
+                        status:
+                          value ===
+                          'Paid'
+                            ? 'paid'
+                            : current.status,
+                      }),
+                    )
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
+
                   <SelectContent>
-                    <SelectItem value="Unpaid">Unpaid</SelectItem>
-                    <SelectItem value="Paid">Paid</SelectItem>
+                    <SelectItem value="Unpaid">
+                      Unpaid
+                    </SelectItem>
+
+                    <SelectItem value="Paid">
+                      Paid
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
+            {/* GOALS */}
+
             <div className="space-y-2">
               <Label htmlFor="booking-goals">
-                Goals <span className="text-muted-foreground">(comma separated)</span>
+                Goals{' '}
+                <span className="text-muted-foreground">
+                  (comma separated)
+                </span>
               </Label>
+
               <Input
                 id="booking-goals"
-                value={bookingForm.goals}
-                onChange={(e) =>
-                  setBookingForm((current) => ({
-                    ...current,
-                    goals: e.target.value,
-                  }))
+                value={
+                  bookingForm.goals
+                }
+                onChange={(
+                  e,
+                ) =>
+                  setBookingForm(
+                    (
+                      current,
+                    ) => ({
+                      ...current,
+                      goals:
+                        e.target
+                          .value,
+                    }),
+                  )
                 }
                 placeholder="Increase brand awareness, Improve lead generation"
               />
             </div>
 
+            {/* NOTES */}
+
             <div className="space-y-2">
-              <Label htmlFor="booking-notes">Notes</Label>
+              <Label htmlFor="booking-notes">
+                Notes
+              </Label>
+
               <Textarea
                 id="booking-notes"
                 rows={4}
-                value={bookingForm.notes}
-                onChange={(e) =>
-                  setBookingForm((current) => ({
-                    ...current,
-                    notes: e.target.value,
-                  }))
+                value={
+                  bookingForm.notes
+                }
+                onChange={(
+                  e,
+                ) =>
+                  setBookingForm(
+                    (
+                      current,
+                    ) => ({
+                      ...current,
+                      notes:
+                        e.target
+                          .value,
+                    }),
+                  )
                 }
               />
             </div>
@@ -2199,12 +3068,24 @@ export default function DiscoveryCallsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setBookingEditOpen(false)}
-                disabled={savingBooking}
+                onClick={() =>
+                  setBookingEditOpen(
+                    false,
+                  )
+                }
+                disabled={
+                  savingBooking
+                }
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={savingBooking}>
+
+              <Button
+                type="submit"
+                disabled={
+                  savingBooking
+                }
+              >
                 {savingBooking ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2213,6 +3094,7 @@ export default function DiscoveryCallsPage() {
                 ) : (
                   <>
                     <Save className="mr-2 h-4 w-4" />
+
                     {editingBooking
                       ? 'Update Booking'
                       : 'Add Booking'}
@@ -2225,11 +3107,13 @@ export default function DiscoveryCallsPage() {
       </Dialog>
 
       {/* ======================================================
-          CLIENT DETAILS DIALOG
+          CLIENT DETAILS
       ====================================================== */}
 
       <Dialog
-        open={clientDetailsOpen}
+        open={
+          clientDetailsOpen
+        }
         onOpenChange={
           setClientDetailsOpen
         }
@@ -2255,11 +3139,15 @@ export default function DiscoveryCallsPage() {
 
                   <div>
                     <h3 className="font-semibold">
-                      {selectedClient.name}
+                      {
+                        selectedClient.name
+                      }
                     </h3>
 
                     <p className="text-sm text-muted-foreground">
-                      {selectedClient.email}
+                      {
+                        selectedClient.email
+                      }
                     </p>
                   </div>
                 </div>
@@ -2267,7 +3155,9 @@ export default function DiscoveryCallsPage() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <InfoItem
-                  icon={Mail}
+                  icon={
+                    Mail
+                  }
                   label="Email"
                   value={
                     selectedClient.email
@@ -2275,7 +3165,9 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Phone}
+                  icon={
+                    Phone
+                  }
                   label="Phone"
                   value={
                     selectedClient.phone ||
@@ -2284,7 +3176,9 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Building2}
+                  icon={
+                    Building2
+                  }
                   label="Company"
                   value={
                     selectedClient.company ||
@@ -2293,7 +3187,9 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Globe}
+                  icon={
+                    Globe
+                  }
                   label="Website"
                   value={
                     selectedClient.website ||
@@ -2302,7 +3198,9 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Sparkles}
+                  icon={
+                    Sparkles
+                  }
                   label="Service"
                   value={
                     selectedClient.service_name ||
@@ -2311,27 +3209,35 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={DollarSign}
+                  icon={
+                    DollarSign
+                  }
                   label="Service Price"
                   value={
                     selectedClient.service_price
-                      ? `₱${selectedClient.service_price}`
+                      ? `₱${Number(
+                          selectedClient.service_price,
+                        ).toLocaleString(
+                          'en-PH',
+                        )}`
                       : 'Not specified'
                   }
                 />
 
                 <InfoItem
-                  icon={Calendar}
-                  label="Preferred Date"
-                  value={
-                    formatDate(
-                      selectedClient.date,
-                    )
+                  icon={
+                    Calendar
                   }
+                  label="Preferred Date"
+                  value={formatDate(
+                    selectedClient.date,
+                  )}
                 />
 
                 <InfoItem
-                  icon={Clock}
+                  icon={
+                    Clock
+                  }
                   label="Preferred Time"
                   value={
                     selectedClient.time ||
@@ -2340,7 +3246,9 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Wallet}
+                  icon={
+                    Wallet
+                  }
                   label="Budget"
                   value={
                     selectedClient.budget ||
@@ -2349,36 +3257,70 @@ export default function DiscoveryCallsPage() {
                 />
 
                 <InfoItem
-                  icon={Timer}
+                  icon={
+                    Timer
+                  }
                   label="Timeline"
                   value={
                     selectedClient.timeline ||
                     'Not specified'
                   }
                 />
+
+                <InfoItem
+                  icon={
+                    CheckCircle
+                  }
+                  label="Booking Status"
+                  value={getBookingStatusLabel(
+                    selectedClient.status,
+                  )}
+                />
+
+                <InfoItem
+                  icon={
+                    DollarSign
+                  }
+                  label="Payment Status"
+                  value={
+                    selectedClient.payment_status ||
+                    'Unpaid'
+                  }
+                />
               </div>
 
-              {Array.isArray(selectedClient.goals) &&
-  selectedClient.goals.length > 0 && (
-    <div>
-      <Label>
-        Goals
-      </Label>
+              {Array.isArray(
+                selectedClient.goals,
+              ) &&
+                selectedClient.goals
+                  .length >
+                  0 && (
+                  <div>
+                    <Label>
+                      Goals
+                    </Label>
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {selectedClient.goals.map(
-          (goal, index) => (
-            <span
-              key={`${String(goal)}-${index}`}
-              className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
-            >
-              {String(goal)}
-            </span>
-          ),
-        )}
-      </div>
-    </div>
-  )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedClient.goals.map(
+                        (
+                          goal,
+                          index,
+                        ) => (
+                          <span
+                            key={`${String(
+                              goal,
+                            )}-${index}`}
+                            className="rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
+                          >
+                            {String(
+                              goal,
+                            )}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
 
               {selectedClient.notes && (
                 <div>
@@ -2387,7 +3329,9 @@ export default function DiscoveryCallsPage() {
                   </Label>
 
                   <div className="mt-2 rounded-xl bg-muted/50 p-4 text-sm leading-relaxed">
-                    {selectedClient.notes}
+                    {
+                      selectedClient.notes
+                    }
                   </div>
                 </div>
               )}
@@ -2404,20 +3348,24 @@ export default function DiscoveryCallsPage() {
                   Close
                 </Button>
 
-                <Button
-                  onClick={() => {
-                    setClientDetailsOpen(
-                      false,
-                    )
+                {!isCompletedBooking(
+                  selectedClient,
+                ) && (
+                  <Button
+                    onClick={() => {
+                      setClientDetailsOpen(
+                        false,
+                      )
 
-                    openProceedToBooking(
-                      selectedClient,
-                    )
-                  }}
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Proceed for Booking
-                </Button>
+                      openProceedToBooking(
+                        selectedClient,
+                      )
+                    }}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Proceed for Booking
+                  </Button>
+                )}
               </DialogFooter>
             </div>
           )}
@@ -2425,11 +3373,13 @@ export default function DiscoveryCallsPage() {
       </Dialog>
 
       {/* ======================================================
-          Proceed for Booking DIALOG
+          PROCEED FOR BOOKING
       ====================================================== */}
 
       <Dialog
-        open={proceedOpen}
+        open={
+          proceedOpen
+        }
         onOpenChange={
           setProceedOpen
         }
@@ -2457,11 +3407,15 @@ export default function DiscoveryCallsPage() {
 
                   <div className="min-w-0">
                     <p className="font-semibold">
-                      {selectedClient.name}
+                      {
+                        selectedClient.name
+                      }
                     </p>
 
                     <p className="truncate text-sm text-muted-foreground">
-                      {selectedClient.email}
+                      {
+                        selectedClient.email
+                      }
                     </p>
                   </div>
                 </div>
@@ -2483,12 +3437,16 @@ export default function DiscoveryCallsPage() {
                   ) => {
                     const event =
                       calEvents.find(
-                        (item) =>
+                        (
+                          item,
+                        ) =>
                           item.id ===
                           value,
                       )
 
-                    if (event) {
+                    if (
+                      event
+                    ) {
                       setSelectedCalEvent(
                         event,
                       )
@@ -2501,7 +3459,9 @@ export default function DiscoveryCallsPage() {
 
                   <SelectContent>
                     {calEvents.map(
-                      (event) => (
+                      (
+                        event,
+                      ) => (
                         <SelectItem
                           key={
                             event.id
@@ -2534,7 +3494,7 @@ export default function DiscoveryCallsPage() {
                 </Select>
               </div>
 
-              {/* SELECTED EVENT */}
+              {/* EVENT */}
 
               <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5">
                 <div className="flex items-start gap-3">
@@ -2585,18 +3545,28 @@ export default function DiscoveryCallsPage() {
                 </div>
               </div>
 
-              {/* EDITABLE EMAIL PROMPT */}
+              {/* EMAIL */}
 
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="booking-email-subject">
                     Email Subject
                   </Label>
+
                   <Input
                     id="booking-email-subject"
                     className="mt-2"
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
+                    value={
+                      emailSubject
+                    }
+                    onChange={(
+                      e,
+                    ) =>
+                      setEmailSubject(
+                        e.target
+                          .value,
+                      )
+                    }
                     placeholder="Email subject"
                   />
                 </div>
@@ -2605,15 +3575,26 @@ export default function DiscoveryCallsPage() {
                   <Label htmlFor="booking-email-message">
                     Email Message
                   </Label>
+
                   <Textarea
                     id="booking-email-message"
                     className="mt-2 min-h-[280px]"
-                    value={emailMessage}
-                    onChange={(e) => setEmailMessage(e.target.value)}
+                    value={
+                      emailMessage
+                    }
+                    onChange={(
+                      e,
+                    ) =>
+                      setEmailMessage(
+                        e.target
+                          .value,
+                      )
+                    }
                     placeholder="Write the booking email you want to send..."
                   />
+
                   <p className="mt-2 text-xs text-muted-foreground">
-                    You can edit the subject and entire message before sending. The Cal.com link is included in the default message.
+                    You can edit the subject and entire message before sending.
                   </p>
                 </div>
 
@@ -2621,8 +3602,11 @@ export default function DiscoveryCallsPage() {
                   <p className="text-xs font-medium text-muted-foreground">
                     Recipient
                   </p>
+
                   <p className="mt-1 text-sm font-semibold">
-                    {selectedClient.email}
+                    {
+                      selectedClient.email
+                    }
                   </p>
                 </div>
               </div>
@@ -2688,62 +3672,13 @@ export default function DiscoveryCallsPage() {
       </Dialog>
 
       {/* ======================================================
-          CAL.COM BOOKING DIALOG
-      ====================================================== */}
-
-      <Dialog
-        open={bookingOpen}
-        onOpenChange={
-          setBookingOpen
-        }
-      >
-        <DialogContent className="max-w-5xl overflow-hidden p-0">
-          <DialogHeader className="border-b px-6 py-4">
-            <DialogTitle>
-              Schedule a Discovery Call
-            </DialogTitle>
-
-            <p className="text-sm text-muted-foreground">
-              Choose an available date and time from your Cal.com schedule.
-            </p>
-          </DialogHeader>
-
-          <div className="max-h-[80vh] overflow-y-auto">
-            <CalBooking
-              calLink="social-growth-sprint-30-min"
-            />
-          </div>
-
-          <DialogFooter className="border-t px-6 py-4">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setBookingOpen(
-                  false,
-                )
-              }
-            >
-              Close
-            </Button>
-
-            <Button
-              onClick={
-                openCalExternally
-              }
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Open Full Scheduler
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ======================================================
           NOTES DIALOG
       ====================================================== */}
 
       <Dialog
-        open={notesOpen}
+        open={
+          notesOpen
+        }
         onOpenChange={
           setNotesOpen
         }
@@ -2773,10 +3708,15 @@ export default function DiscoveryCallsPage() {
                 id="meeting-notes"
                 rows={6}
                 placeholder="Key discussion points, action items, client needs..."
-                value={notesText}
-                onChange={(e) =>
+                value={
+                  notesText
+                }
+                onChange={(
+                  e,
+                ) =>
                   setNotesText(
-                    e.target.value,
+                    e.target
+                      .value,
                   )
                 }
               />
@@ -2815,7 +3755,9 @@ export default function DiscoveryCallsPage() {
       ====================================================== */}
 
       <Dialog
-        open={completeOpen}
+        open={
+          completeOpen
+        }
         onOpenChange={
           setCompleteOpen
         }
@@ -2841,9 +3783,13 @@ export default function DiscoveryCallsPage() {
               </p>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                {editingCall?.type}
+                {
+                  editingCall?.type
+                }
                 {' · '}
-                {editingCall?.duration}
+                {
+                  editingCall?.duration
+                }
                 {' min'}
               </p>
             </div>
@@ -2854,7 +3800,9 @@ export default function DiscoveryCallsPage() {
               </Label>
 
               <Select
-                value={outcome}
+                value={
+                  outcome
+                }
                 onValueChange={
                   setOutcome
                 }
@@ -2865,7 +3813,9 @@ export default function DiscoveryCallsPage() {
 
                 <SelectContent>
                   {outcomeOptions.map(
-                    (option) => (
+                    (
+                      option,
+                    ) => (
                       <SelectItem
                         key={
                           option.value
@@ -2905,9 +3855,12 @@ export default function DiscoveryCallsPage() {
                 value={
                   nextStep
                 }
-                onChange={(e) =>
+                onChange={(
+                  e,
+                ) =>
                   setNextStep(
-                    e.target.value,
+                    e.target
+                      .value,
                   )
                 }
                 placeholder="e.g. Send proposal and follow up with client after 3 days."
@@ -2929,7 +3882,9 @@ export default function DiscoveryCallsPage() {
                 </div>
 
                 <p className="mt-2 text-sm">
-                  {outcome}
+                  {
+                    outcome
+                  }
                 </p>
 
                 {nextStep.trim() && (
@@ -2937,7 +3892,9 @@ export default function DiscoveryCallsPage() {
                     <ArrowRight className="mt-0.5 h-4 w-4 text-blue-600" />
 
                     <p className="text-sm text-muted-foreground">
-                      {nextStep}
+                      {
+                        nextStep
+                      }
                     </p>
                   </div>
                 )}
