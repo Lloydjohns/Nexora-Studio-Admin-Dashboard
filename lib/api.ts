@@ -240,23 +240,6 @@ function getServiceDetails(
 // LEAD HELPERS
 // ============================================================
 
-/**
- * Converts database lead status to dashboard status.
- *
- * Supports:
- *   new
- *   New
- *   contacted
- *   Contacted
- *   discovery_scheduled
- *   Discovery Scheduled
- *   proposal_sent
- *   Proposal Sent
- *   won
- *   Won
- *   lost
- *   Lost
- */
 function mapLeadStatus(
   status: unknown,
 ): Lead['status'] {
@@ -293,20 +276,6 @@ function mapLeadStatus(
   }
 }
 
-/**
- * Converts dashboard lead status into
- * the database-friendly value.
- *
- * contact_submissions currently stores
- * values such as:
- *
- *   new
- *   contacted
- *   discovery_scheduled
- *   proposal_sent
- *   won
- *   lost
- */
 function normalizeLeadStatus(
   status: unknown,
 ): string {
@@ -343,11 +312,6 @@ function normalizeLeadStatus(
   }
 }
 
-/**
- * Splits the Leads page name into the
- * contact_submissions first_name / last_name
- * columns.
- */
 function splitLeadName(
   name: string,
 ): {
@@ -414,26 +378,6 @@ function mapClient(
   };
 }
 
-/**
- * IMPORTANT LEAD MAPPER
- *
- * The Leads dashboard now reads from:
- *
- * public.contact_submissions
- *
- * Database columns:
- *
- * first_name
- * last_name
- * email
- * brand
- * service
- * budget
- * message
- * status
- * id
- * created_at
- */
 function mapLead(
   r: any,
 ): Lead {
@@ -557,21 +501,33 @@ function mapDiscoveryBooking(
   };
 }
 
+// ============================================================
+// PROJECT MAPPER
+// ============================================================
+
 function mapProject(
   r: any,
 ): Project {
   return {
-    id: r.id,
-    name: r.name,
-    client: r.client,
+    id: safeString(r.id),
+    name: safeString(r.name),
+    client: safeString(r.client),
+    client_id:
+      r.client_id ?? null,
     serviceType:
-      r.service_type,
+      safeString(r.service_type),
     stage: r.stage,
-    progress: r.progress,
-    deadline: r.deadline,
-    team: r.team ?? [],
-    priority: r.priority,
-  };
+    progress:
+      Number(r.progress ?? 0),
+    deadline:
+      safeString(r.deadline),
+    team:
+      Array.isArray(r.team)
+        ? r.team
+        : [],
+    priority:
+      r.priority,
+  } as Project;
 }
 
 function mapContentItem(
@@ -738,17 +694,6 @@ export async function fetchClients(): Promise<Client[]> {
 // LEADS
 // ============================================================
 
-/**
- * IMPORTANT:
- *
- * Leads are now fetched from:
- *
- * public.contact_submissions
- *
- * NOT public.leads.
- *
- * This matches your actual Supabase table.
- */
 export async function fetchLeads(): Promise<Lead[]> {
   if (!supabaseConfigured) {
     return Promise.resolve(
@@ -802,17 +747,6 @@ export async function fetchLeads(): Promise<Lead[]> {
 // DISCOVERY BOOKINGS
 // ============================================================
 
-/**
- * IMPORTANT:
- *
- * This is your CURRENT Discovery Calls
- * database source.
- *
- * DO NOT CHANGE THIS.
- *
- * Source:
- * public.discovery_bookings
- */
 export async function fetchDiscoveryCalls(): Promise<
   DiscoveryCall[]
 > {
@@ -846,9 +780,6 @@ export async function fetchDiscoveryCalls(): Promise<
   ).map(mapDiscoveryBooking);
 }
 
-/**
- * Admin creates a new discovery booking.
- */
 export async function insertDiscoveryCall(
   payload: {
     client_name: string;
@@ -993,9 +924,6 @@ export async function insertDiscoveryCall(
   return mapDiscoveryBooking(data);
 }
 
-/**
- * Update a discovery booking.
- */
 export async function updateDiscoveryCall(
   id: string,
   payload: Record<string, unknown>,
@@ -1087,17 +1015,6 @@ export async function deleteDiscoveryCall(
 // LEGACY DISCOVERY CALLS
 // ============================================================
 
-/**
- * SECOND DISCOVERY CALL DATABASE FETCH
- *
- * This intentionally remains in the API.
- *
- * Source:
- * public.discovery_calls
- *
- * Do NOT remove if another part of your
- * application still uses it.
- */
 export async function fetchLegacyDiscoveryCalls(): Promise<
   DiscoveryCall[]
 > {
@@ -1174,17 +1091,31 @@ export async function fetchProjects(): Promise<Project[]> {
       ascending: false,
     });
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to fetch projects:',
+      error,
+    );
+
+    throw error;
+  }
 
   return (
     data ?? []
   ).map(mapProject);
 }
 
+/**
+ * Creates a new project.
+ *
+ * client_id links the project to:
+ * public.clients.id
+ */
 export async function insertProject(
   payload: {
     name: string;
     client: string;
+    client_id?: string | null;
     service_type: string;
     stage: string;
     progress: number;
@@ -1192,17 +1123,126 @@ export async function insertProject(
     team: string[];
     priority: string;
   },
-) {
+): Promise<Project> {
+  if (!supabaseConfigured) {
+    throw new Error(
+      'Supabase is not configured.',
+    );
+  }
+
+  /*
+   * Generate the next P-### project ID.
+   *
+   * Existing project IDs:
+   * P-301 ... P-310
+   */
+  const {
+    data: lastProject,
+    error: lastProjectError,
+  } =
+    await supabase
+      .from('projects')
+      .select('id')
+      .like('id', 'P-%')
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+  if (lastProjectError) {
+    console.error(
+      'Failed to determine next project ID:',
+      lastProjectError,
+    );
+
+    throw lastProjectError;
+  }
+
+  let nextNumber = 1;
+
+  if (
+    lastProject?.id
+  ) {
+    const match =
+      String(
+        lastProject.id,
+      ).match(
+        /^P-(\d+)$/,
+      );
+
+    if (match) {
+      nextNumber =
+        Number(match[1]) + 1;
+    }
+  }
+
+  const projectId =
+    `P-${String(
+      nextNumber,
+    ).padStart(3, '0')}`;
+
+  const insertPayload = {
+    id:
+      projectId,
+
+    name:
+      payload.name.trim(),
+
+    client:
+      payload.client.trim(),
+
+    client_id:
+      payload.client_id ??
+      null,
+
+    service_type:
+      payload.service_type,
+
+    stage:
+      payload.stage,
+
+    progress:
+      Number(
+        payload.progress ?? 0,
+      ),
+
+    deadline:
+      payload.deadline,
+
+    team:
+      Array.isArray(
+        payload.team,
+      )
+        ? payload.team
+        : [],
+
+    priority:
+      payload.priority,
+  };
+
+  console.log(
+    'Creating project:',
+    insertPayload,
+  );
+
   const {
     data,
     error,
   } = await supabase
     .from('projects')
-    .insert(payload)
-    .select()
+    .insert(insertPayload)
+    .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to create project:',
+      error,
+    );
+
+    throw error;
+  }
 
   return mapProject(data);
 }
@@ -1210,7 +1250,13 @@ export async function insertProject(
 export async function updateProject(
   id: string,
   payload: Record<string, unknown>,
-) {
+): Promise<Project> {
+  if (!id) {
+    throw new Error(
+      'Project ID is missing.',
+    );
+  }
+
   const {
     data,
     error,
@@ -1218,17 +1264,30 @@ export async function updateProject(
     .from('projects')
     .update(payload)
     .eq('id', id)
-    .select()
+    .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to update project:',
+      error,
+    );
+
+    throw error;
+  }
 
   return mapProject(data);
 }
 
 export async function deleteProject(
   id: string,
-) {
+): Promise<void> {
+  if (!id) {
+    throw new Error(
+      'Project ID is missing.',
+    );
+  }
+
   const {
     error,
   } = await supabase
@@ -1236,7 +1295,14 @@ export async function deleteProject(
     .delete()
     .eq('id', id);
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to delete project:',
+      error,
+    );
+
+    throw error;
+  }
 }
 
 // ============================================================
@@ -1918,6 +1984,15 @@ export async function fetchCallBookings(): Promise<
 // CLIENT MUTATIONS
 // ============================================================
 
+/**
+ * Creates a new client with a real C-### ID.
+ *
+ * Existing clients:
+ *   C-001 ... C-008
+ *
+ * Newly created clients:
+ *   C-009, C-010, C-011, ...
+ */
 export async function insertClient(
   payload: {
     name: string;
@@ -1931,17 +2006,118 @@ export async function insertClient(
     industry: string;
     start_date: string;
   },
-) {
+): Promise<Client> {
+  if (!supabaseConfigured) {
+    throw new Error(
+      'Supabase is not configured.',
+    );
+  }
+
+  const {
+    data: lastClient,
+    error: lastClientError,
+  } =
+    await supabase
+      .from('clients')
+      .select('id')
+      .like('id', 'C-%')
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+  if (lastClientError) {
+    console.error(
+      'Failed to determine next client ID:',
+      lastClientError,
+    );
+
+    throw lastClientError;
+  }
+
+  let nextNumber = 1;
+
+  if (
+    lastClient?.id
+  ) {
+    const match =
+      String(
+        lastClient.id,
+      ).match(
+        /^C-(\d+)$/,
+      );
+
+    if (match) {
+      nextNumber =
+        Number(match[1]) + 1;
+    }
+  }
+
+  const clientId =
+    `C-${String(
+      nextNumber,
+    ).padStart(3, '0')}`;
+
+  const insertPayload = {
+    id:
+      clientId,
+
+    name:
+      payload.name.trim(),
+
+    company:
+      payload.company.trim(),
+
+    email:
+      payload.email.trim(),
+
+    phone:
+      payload.phone.trim(),
+
+    service_package:
+      payload.service_package,
+
+    status:
+      payload.status,
+
+    monthly_retainer:
+      Number(
+        payload.monthly_retainer ?? 0,
+      ),
+
+    account_manager:
+      payload.account_manager.trim(),
+
+    industry:
+      payload.industry.trim(),
+
+    start_date:
+      payload.start_date,
+  };
+
+  console.log(
+    'Creating client:',
+    insertPayload,
+  );
+
   const {
     data,
     error,
   } = await supabase
     .from('clients')
-    .insert(payload)
-    .select()
+    .insert(insertPayload)
+    .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to insert client:',
+      error,
+    );
+
+    throw error;
+  }
 
   return mapClient(data);
 }
@@ -1949,7 +2125,13 @@ export async function insertClient(
 export async function updateClient(
   id: string,
   payload: Record<string, unknown>,
-) {
+): Promise<Client> {
+  if (!id) {
+    throw new Error(
+      'Client ID is missing.',
+    );
+  }
+
   const {
     data,
     error,
@@ -1957,17 +2139,30 @@ export async function updateClient(
     .from('clients')
     .update(payload)
     .eq('id', id)
-    .select()
+    .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to update client:',
+      error,
+    );
+
+    throw error;
+  }
 
   return mapClient(data);
 }
 
 export async function deleteClient(
   id: string,
-) {
+): Promise<void> {
+  if (!id) {
+    throw new Error(
+      'Client ID is missing.',
+    );
+  }
+
   const {
     error,
   } = await supabase
@@ -1975,20 +2170,20 @@ export async function deleteClient(
     .delete()
     .eq('id', id);
 
-  if (error) throw error;
+  if (error) {
+    console.error(
+      'Failed to delete client:',
+      error,
+    );
+
+    throw error;
+  }
 }
 
 // ============================================================
 // LEAD MUTATIONS
 // ============================================================
 
-/**
- * Insert a lead into:
- *
- * public.contact_submissions
- *
- * This matches your actual contact form table.
- */
 export async function insertLead(
   payload: {
     name: string;
@@ -2068,11 +2263,6 @@ export async function insertLead(
   return mapLead(data);
 }
 
-/**
- * Update a lead in:
- *
- * public.contact_submissions
- */
 export async function updateLead(
   id: string,
   payload: Record<string, unknown>,
@@ -2147,14 +2337,6 @@ export async function updateLead(
       );
   }
 
-  /**
-   * The contact_submissions table
-   * does not currently have a source column.
-   *
-   * Therefore source is intentionally
-   * NOT sent to Supabase.
-   */
-
   if (
     Object.keys(
       updatePayload,
@@ -2193,11 +2375,6 @@ export async function updateLead(
   return mapLead(data);
 }
 
-/**
- * Delete a lead from:
- *
- * public.contact_submissions
- */
 export async function deleteLead(
   id: string,
 ): Promise<void> {
