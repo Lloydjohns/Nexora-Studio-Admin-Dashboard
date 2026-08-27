@@ -730,155 +730,150 @@ export default function DiscoveryCallsPage() {
   // CONVERT PAID SESSION TO CLIENT
   // ==========================================================
 
-  async function convertPaidSessionToClient(
-    booking: WebsiteBooking,
+ async function convertPaidSessionToClient(
+  booking: WebsiteBooking,
+) {
+  const status = normalizeBookingStatus(booking.status)
+  const paymentStatus = normalizeBookingStatus(
+    booking.payment_status,
+  )
+
+  if (
+    status !== 'paid' &&
+    paymentStatus !== 'paid'
   ) {
-    const status =
-      normalizeBookingStatus(
-        booking.status,
+    toast.error(
+      'This booking is not marked as paid yet.',
+      {
+        description:
+          'Move the booking to Paid Session after payment is confirmed.',
+      },
+    )
+
+    return
+  }
+
+  setConvertingClientId(booking.id)
+
+  try {
+    // ======================================================
+    // CHECK IF CLIENT ALREADY EXISTS
+    // ======================================================
+
+    const {
+      data: existingClients,
+      error: lookupError,
+    } = await supabase
+      .from('clients')
+      .select('id, name, email')
+      .eq(
+        'email',
+        booking.email.trim(),
       )
+      .limit(1)
 
-    const paymentStatus =
-      normalizeBookingStatus(
-        booking.payment_status,
-      )
+    if (lookupError) {
+      throw lookupError
+    }
 
-    const isPaid =
-      status === 'paid' ||
-      status === 'paid_ready' ||
-      paymentStatus === 'paid'
+    const existingClient =
+      existingClients?.[0]
 
-    if (!isPaid) {
-      toast.error(
-        'This booking is not marked as paid yet.',
+    // ======================================================
+    // ALREADY A CLIENT
+    // ======================================================
+
+    if (existingClient) {
+      toast.info(
+        'This customer is already in Clients.',
         {
           description:
-            'Move the booking to Paid Session after payment is confirmed.',
+            `${existingClient.name || booking.name} already has a client record.`,
         },
       )
 
       return
     }
 
-    setConvertingClientId(
-      booking.id,
+    // ======================================================
+    // CREATE CLIENT
+    // ======================================================
+
+    const {
+      error: insertError,
+    } = await supabase
+      .from('clients')
+      .insert({
+        name: booking.name,
+
+        company:
+          booking.company || '',
+
+        email:
+          booking.email.trim(),
+
+        phone:
+          booking.phone || '',
+
+        service_package:
+          booking.service_name ||
+          'Discovery Session',
+
+        status:
+          'Onboarding',
+
+        monthly_retainer:
+          0,
+
+        account_manager:
+          '',
+
+        industry:
+          '',
+
+        start_date:
+          new Date()
+            .toISOString()
+            .split('T')[0],
+      })
+
+    if (insertError) {
+      throw insertError
+    }
+
+    // ======================================================
+    // SUCCESS
+    // ======================================================
+
+    toast.success(
+      'Customer converted to client!',
+      {
+        description:
+          `${booking.name} has been added to your Clients page.`,
+      },
     )
 
-    try {
-      // ======================================================
-      // CHECK IF CLIENT ALREADY EXISTS
-      // ======================================================
+    await fetchBookingRequests()
 
-      const {
-        data: existingClient,
-        error: lookupError,
-      } = await supabase
-        .from('clients')
-        .select(
-          'id, name, email',
-        )
-        .eq(
-          'email',
-          booking.email.trim(),
-        )
-        .maybeSingle()
+  } catch (err: any) {
+    console.error(
+      'CONVERT PAID SESSION ERROR:',
+      err,
+    )
 
-      if (lookupError) {
-        throw lookupError
-      }
+    toast.error(
+      'Failed to convert to client',
+      {
+        description:
+          err?.message ||
+          'Unable to create the client record.',
+      },
+    )
 
-      if (existingClient) {
-        toast.info(
-          'This customer is already in Clients.',
-          {
-            description:
-              `${existingClient.name || booking.name} already has a client record.`,
-          },
-        )
-
-        return
-      }
-
-      // ======================================================
-      // CREATE CLIENT
-      // ======================================================
-
-      const {
-        error: insertError,
-      } = await supabase
-        .from('clients')
-        .insert({
-          name:
-            booking.name,
-
-          company:
-            booking.company || '',
-
-          email:
-            booking.email.trim(),
-
-          phone:
-            booking.phone || '',
-
-          service_package:
-            booking.service_name ||
-            'Discovery Session',
-
-          status:
-            'Onboarding',
-
-          monthly_retainer:
-            0,
-
-          account_manager:
-            '',
-
-          industry:
-            '',
-
-          start_date:
-            new Date()
-              .toISOString()
-              .split('T')[0],
-        })
-
-      if (insertError) {
-        throw insertError
-      }
-
-      toast.success(
-        'Customer converted to client!',
-        {
-          description:
-            `${booking.name} has been added to your Clients page.`,
-        },
-      )
-
-      // ======================================================
-      // REFRESH BOOKING DATA
-      // ======================================================
-
-      await fetchBookingRequests()
-    } catch (err: any) {
-      console.error(
-        'CONVERT PAID SESSION ERROR:',
-        err,
-      )
-
-      toast.error(
-        'Failed to convert to client',
-        {
-          description:
-            err?.message ||
-            'Unable to create the client record.',
-        },
-      )
-    } finally {
-      setConvertingClientId(
-        null,
-      )
-    }
+  } finally {
+    setConvertingClientId(null)
   }
+}
 
   // ==========================================================
   // OPEN CLIENT DETAILS
