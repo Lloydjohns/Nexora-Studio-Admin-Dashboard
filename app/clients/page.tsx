@@ -1295,34 +1295,23 @@ function ClientWorkspace({
   ========================================================== */
 
   function openClientProject() {
-    if (!client?.id) {
-      toast.error(
-        'This client does not have a valid ID.',
-      );
-      return;
-    }
-
-    const target =
-      `/projects?clientId=${encodeURIComponent(
-        String(client.id),
-      )}&client=${encodeURIComponent(
-        String(
-          client.company ||
-            '',
-        ),
-      )}`;
-
-    /*
-     * Force the browser to navigate.
-     *
-     * This avoids the previous router scope/navigation
-     * problem from the ClientWorkspace.
-     */
-    window.location.assign(
-      target,
+  if (!client?.id) {
+    toast.error(
+      'This client does not have a valid ID.',
     );
+    return;
   }
 
+  router.push(
+    `/projects?clientId=${encodeURIComponent(
+      String(client.id),
+    )}&client=${encodeURIComponent(
+      String(
+        client.company || '',
+      ),
+    )}`,
+  );
+}
   /* ==========================================================
      LOCAL WORKSPACE DATA
   ========================================================== */

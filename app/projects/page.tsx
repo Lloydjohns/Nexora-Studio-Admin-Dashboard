@@ -143,6 +143,7 @@ const priorityOptions = [
 interface ProjectForm {
   name: string;
   client: string;
+  client_id: string | null;
   serviceType: string;
   stage: ProjectStage;
   progress: number;
@@ -154,32 +155,36 @@ interface ProjectForm {
     | 'High';
 }
 
-const emptyForm: ProjectForm =
-  {
-    name: '',
-    client: '',
-    serviceType:
-      'Social Media',
-    stage: 'Discovery',
-    progress: 0,
-    deadline: new Date(
-      Date.now() +
-        14 *
-          86400000,
-    )
-      .toISOString()
-      .split('T')[0],
-    team: '',
-    priority: 'Medium',
-  };
+function getDefaultDeadline() {
+  return new Date(
+    Date.now() +
+      14 * 86400000,
+  )
+    .toISOString()
+    .split('T')[0];
+}
+
+const emptyForm: ProjectForm = {
+  name: '',
+  client: '',
+  client_id: null,
+  serviceType:
+    'Social Media',
+  stage: 'Discovery',
+  progress: 0,
+  deadline:
+    getDefaultDeadline(),
+  team: '',
+  priority: 'Medium',
+};
 
 function getInitials(
   name: string,
 ) {
   return name
-    .split(' ')
+    .split(/\s+/)
     .map(
-      (n) => n[0],
+      (part) => part[0],
     )
     .join('')
     .slice(0, 2);
@@ -190,15 +195,12 @@ function getInitials(
 ============================================================ */
 
 export default function ProjectsPage() {
-  const router = useRouter();
+  const router =
+    useRouter();
+
   const searchParams =
     useSearchParams();
 
-  /*
-   * These are supplied from Clients page:
-   *
-   * /projects?clientId=CLIENT_ID&client=COMPANY
-   */
   const clientId =
     searchParams.get(
       'clientId',
@@ -209,8 +211,10 @@ export default function ProjectsPage() {
       'client',
     ) || '';
 
-  const [refreshKey, setRefreshKey] =
-    React.useState(0);
+  const [
+    refreshKey,
+    setRefreshKey,
+  ] = React.useState(0);
 
   const {
     data: projects,
@@ -220,10 +224,11 @@ export default function ProjectsPage() {
     [refreshKey],
   );
 
-  const refetch = () =>
+  function refetch() {
     setRefreshKey(
-      (k) => k + 1,
+      (key) => key + 1,
     );
+  }
 
   const [
     open,
@@ -246,54 +251,93 @@ export default function ProjectsPage() {
     form,
     setForm,
   ] = React.useState<ProjectForm>(
-    {
-      ...emptyForm,
-      client:
-        clientName,
-    },
+    emptyForm,
   );
+
+  const [
+    initializedFromClient,
+    setInitializedFromClient,
+  ] = React.useState(false);
 
   const allProjects =
     projects ?? [];
 
+  /* ============================================================
+     KPIs
+  ============================================================ */
+
   const inProgress =
     allProjects.filter(
-      (p) =>
-        p.stage !==
+      (project) =>
+        project.stage !==
         'Completed',
     ).length;
 
   const completed =
     allProjects.filter(
-      (p) =>
-        p.stage ===
+      (project) =>
+        project.stage ===
         'Completed',
     ).length;
 
   const highPriority =
     allProjects.filter(
-      (p) =>
-        p.priority ===
+      (project) =>
+        project.priority ===
           'High' &&
-        p.stage !==
+        project.stage !==
           'Completed',
     ).length;
 
   /* ============================================================
-     UPDATE FORM WHEN URL CLIENT CHANGES
+     AUTO OPEN NEW PROJECT
+     
+     THIS IS THE IMPORTANT FIX.
+     
+     When coming from:
+     
+     /projects?clientId=C-001&client=Bloom%20Skincare
+     
+     automatically:
+     
+     1. puts Bloom Skincare in Client
+     2. stores C-001 in client_id
+     3. opens New Project dialog
   ============================================================ */
 
   React.useEffect(() => {
-    if (!editId) {
-      setForm((current) => ({
-        ...current,
+    if (
+      initializedFromClient
+    ) {
+      return;
+    }
+
+    if (
+      clientId &&
+      clientName
+    ) {
+      setEditId(null);
+
+      setForm({
+        ...emptyForm,
         client:
           clientName,
-      }));
+        client_id:
+          clientId,
+        deadline:
+          getDefaultDeadline(),
+      });
+
+      setOpen(true);
+
+      setInitializedFromClient(
+        true,
+      );
     }
   }, [
+    clientId,
     clientName,
-    editId,
+    initializedFromClient,
   ]);
 
   /* ============================================================
@@ -306,7 +350,11 @@ export default function ProjectsPage() {
     setForm({
       ...emptyForm,
       client:
-        clientName,
+        clientName || '',
+      client_id:
+        clientId || null,
+      deadline:
+        getDefaultDeadline(),
     });
 
     setOpen(true);
@@ -319,32 +367,53 @@ export default function ProjectsPage() {
   function openEdit(
     id: string,
   ) {
-    const p =
+    const project =
       allProjects.find(
-        (x) =>
-          x.id === id,
+        (item) =>
+          item.id === id,
       );
 
-    if (!p) return;
+    if (!project) {
+      toast.error(
+        'Project not found.',
+      );
+      return;
+    }
 
     setEditId(id);
 
     setForm({
-      name: p.name,
-      client: p.client,
+      name:
+        project.name || '',
+      client:
+        project.client || '',
+      client_id:
+        project.client_id ??
+        null,
       serviceType:
-        p.serviceType,
-      stage: p.stage,
+        project.serviceType ||
+        'Social Media',
+      stage:
+        project.stage ||
+        'Discovery',
       progress:
-        p.progress,
+        Number(
+          project.progress,
+        ) || 0,
       deadline:
-        p.deadline,
+        project.deadline ||
+        getDefaultDeadline(),
       team:
-        p.team.join(
-          ', ',
-        ),
+        Array.isArray(
+          project.team,
+        )
+          ? project.team.join(
+              ', ',
+            )
+          : '',
       priority:
-        p.priority,
+        project.priority ||
+        'Medium',
     });
 
     setOpen(true);
@@ -355,15 +424,14 @@ export default function ProjectsPage() {
   ============================================================ */
 
   async function handleSubmit(
-    e: React.FormEvent,
+    event: React.FormEvent,
   ) {
-    e.preventDefault();
+    event.preventDefault();
 
     if (!form.name.trim()) {
       toast.error(
         'Project name is required.',
       );
-
       return;
     }
 
@@ -371,26 +439,23 @@ export default function ProjectsPage() {
       toast.error(
         'Client is required.',
       );
-
       return;
     }
 
     /*
-     * A new project coming from a client should have
-     * clientId available.
+     * A NEW project created from a client must have client_id.
      */
     if (
       !editId &&
-      !clientId
+      !form.client_id
     ) {
       toast.error(
-        'This project is not connected to a client.',
+        'Client connection is missing.',
         {
           description:
-            'Create the project from the client workspace so the client ID can be attached.',
+            'Please create the project from the client workspace.',
         },
       );
-
       return;
     }
 
@@ -401,17 +466,14 @@ export default function ProjectsPage() {
         name:
           form.name.trim(),
 
-        /*
-         * Keep existing field for compatibility.
-         */
         client:
           form.client.trim(),
 
         /*
-         * THIS is the database relationship.
+         * REAL DATABASE RELATIONSHIP
          */
         client_id:
-          clientId || null,
+          form.client_id,
 
         service_type:
           form.serviceType,
@@ -420,7 +482,9 @@ export default function ProjectsPage() {
           form.stage,
 
         progress:
-          form.progress,
+          Number(
+            form.progress,
+          ) || 0,
 
         deadline:
           form.deadline,
@@ -429,8 +493,8 @@ export default function ProjectsPage() {
           form.team
             .split(',')
             .map(
-              (t) =>
-                t.trim(),
+              (member) =>
+                member.trim(),
             )
             .filter(
               Boolean,
@@ -441,44 +505,119 @@ export default function ProjectsPage() {
       };
 
       if (editId) {
-        await updateProject(
-          editId,
-          payload,
-        );
+        /*
+         * UPDATE
+         */
+        const updated =
+          await updateProject(
+            editId,
+            payload,
+          );
 
         toast.success(
-          'Project updated.',
+          'Project updated successfully.',
         );
+
+        /*
+         * Keep the updated data
+         * in the form.
+         */
+        setForm({
+          name:
+            updated.name ||
+            '',
+          client:
+            updated.client ||
+            '',
+          client_id:
+            updated.client_id ??
+            null,
+          serviceType:
+            updated.serviceType ||
+            'Social Media',
+          stage:
+            updated.stage ||
+            'Discovery',
+          progress:
+            Number(
+              updated.progress,
+            ) || 0,
+          deadline:
+            updated.deadline ||
+            '',
+          team:
+            Array.isArray(
+              updated.team,
+            )
+              ? updated.team.join(
+                  ', ',
+                )
+              : '',
+          priority:
+            updated.priority ||
+            'Medium',
+        });
       } else {
-        await insertProject(
-          payload,
-        );
+        /*
+         * CREATE
+         */
+        const created =
+          await insertProject(
+            payload,
+          );
 
         toast.success(
-          'Project created and connected to the client.',
+          'Project created successfully.',
+          {
+            description:
+              `${created.name} is connected to ${created.client}.`,
+          },
         );
+
+        /*
+         * After creating, immediately
+         * open the Project File page.
+         *
+         * Example:
+         * /projects/P-311
+         */
+        if (
+          created?.id
+        ) {
+          setOpen(false);
+          setEditId(null);
+
+          refetch();
+
+          router.push(
+            `/projects/${encodeURIComponent(
+              String(
+                created.id,
+              ),
+            )}`,
+          );
+
+          return;
+        }
       }
 
       setOpen(false);
       setEditId(null);
 
-      /*
-       * Return to project list and reload the data.
-       */
       refetch();
     } catch (
-      err: any
+      error: any
     ) {
       console.error(
         'Project save error:',
-        err,
+        error,
       );
 
       toast.error(
         'Failed to save project.',
         {
           description:
-            err?.message ||
+            error?.message ||
             'Something went wrong while saving the project.',
         },
       );
@@ -494,24 +633,59 @@ export default function ProjectsPage() {
   async function handleDelete(
     id: string,
   ) {
-    try {
-      await deleteProject(
-        id,
+    if (!id) {
+      toast.error(
+        'Project ID is missing.',
+      );
+      return;
+    }
+
+    const project =
+      allProjects.find(
+        (item) =>
+          item.id === id,
       );
 
-      toast.success(
-        'Project deleted.',
+    const confirmed =
+      window.confirm(
+        `Delete ${
+          project?.name ||
+          'this project'
+        }?`,
       );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteProject(id);
+
+      toast.success(
+        'Project deleted successfully.',
+      );
+
+      /*
+       * If deleting from the dialog,
+       * close it.
+       */
+      setOpen(false);
+      setEditId(null);
 
       refetch();
     } catch (
-      err: any
+      error: any
     ) {
+      console.error(
+        'Project delete error:',
+        error,
+      );
+
       toast.error(
         'Failed to delete project.',
         {
           description:
-            err?.message ||
+            error?.message ||
             'Something went wrong while deleting the project.',
         },
       );
@@ -519,14 +693,23 @@ export default function ProjectsPage() {
   }
 
   /* ============================================================
-     PROJECT FILE PAGE
+     OPEN PROJECT FILE
   ============================================================ */
 
   function openProjectFile(
     id: string,
   ) {
+    if (!id) {
+      toast.error(
+        'Project ID is missing.',
+      );
+      return;
+    }
+
     router.push(
-      `/projects/${id}`,
+      `/projects/${encodeURIComponent(
+        id,
+      )}`,
     );
   }
 
@@ -550,6 +733,35 @@ export default function ProjectsPage() {
           New Project
         </Button>
       </PageHeader>
+
+      {/* ======================================================
+         CONNECTED CLIENT NOTICE
+      ====================================================== */}
+
+      {clientId &&
+        clientName && (
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <div>
+              <p className="text-sm font-medium">
+                Creating project for{' '}
+                {clientName}
+              </p>
+
+              <p className="text-xs text-muted-foreground">
+                Client ID:{' '}
+                {clientId}
+              </p>
+            </div>
+
+            <Badge variant="secondary">
+              Connected
+            </Badge>
+          </div>
+        )}
+
+      {/* ======================================================
+         KPIs
+      ====================================================== */}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
@@ -602,6 +814,10 @@ export default function ProjectsPage() {
         />
       </div>
 
+      {/* ======================================================
+         TABS
+      ====================================================== */}
+
       <Tabs
         defaultValue="board"
         className="mt-6"
@@ -616,7 +832,9 @@ export default function ProjectsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* KANBAN */}
+        {/* ====================================================
+           KANBAN
+        ==================================================== */}
 
         <TabsContent
           value="board"
@@ -639,11 +857,11 @@ export default function ProjectsPage() {
                     }).map(
                       (
                         _,
-                        i,
+                        index,
                       ) => (
                         <div
                           key={
-                            i
+                            index
                           }
                           className="h-24 animate-pulse rounded-lg bg-muted"
                         />
@@ -659,10 +877,8 @@ export default function ProjectsPage() {
                 (stage) => {
                   const stageProjects =
                     allProjects.filter(
-                      (
-                        p,
-                      ) =>
-                        p.stage ===
+                      (project) =>
+                        project.stage ===
                         stage,
                     );
 
@@ -702,26 +918,24 @@ export default function ProjectsPage() {
                       <div className="space-y-2">
                         {stageProjects.map(
                           (
-                            p,
-                            i,
+                            project,
+                            index,
                           ) => (
                             <motion.div
                               key={
-                                p.id
+                                project.id
                               }
                               initial={{
-                                opacity:
-                                  0,
+                                opacity: 0,
                                 y: 8,
                               }}
                               animate={{
-                                opacity:
-                                  1,
+                                opacity: 1,
                                 y: 0,
                               }}
                               transition={{
                                 delay:
-                                  i *
+                                  index *
                                   0.05,
                               }}
                             >
@@ -729,7 +943,7 @@ export default function ProjectsPage() {
                                 className="cursor-pointer transition-shadow hover:shadow-md"
                                 onClick={() =>
                                   openProjectFile(
-                                    p.id,
+                                    project.id,
                                   )
                                 }
                               >
@@ -737,19 +951,19 @@ export default function ProjectsPage() {
                                   <div className="flex items-start justify-between gap-2">
                                     <p className="text-sm font-semibold leading-snug">
                                       {
-                                        p.name
+                                        project.name
                                       }
                                     </p>
 
                                     <Trash2
-                                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground hover:text-rose-500"
+                                      className="h-3.5 w-3.5 shrink-0 cursor-pointer text-muted-foreground hover:text-rose-500"
                                       onClick={(
-                                        e,
+                                        event,
                                       ) => {
-                                        e.stopPropagation();
+                                        event.stopPropagation();
 
                                         handleDelete(
-                                          p.id,
+                                          project.id,
                                         );
                                       }}
                                     />
@@ -757,59 +971,65 @@ export default function ProjectsPage() {
 
                                   <p className="mt-1 text-xs text-muted-foreground">
                                     {
-                                      p.client
+                                      project.client
                                     }
                                   </p>
 
                                   <div className="mt-2.5">
                                     <ProgressBar
                                       value={
-                                        p.progress
+                                        Number(
+                                          project.progress,
+                                        ) ||
+                                        0
                                       }
                                     />
                                   </div>
 
                                   <div className="mt-3 flex items-center justify-between">
                                     <div className="flex -space-x-1.5">
-                                      {p.team
-                                        .slice(
-                                          0,
-                                          3,
-                                        )
-                                        .map(
-                                          (
-                                            m,
-                                          ) => (
-                                            <Avatar
-                                              key={
-                                                m
-                                              }
-                                              initials={getInitials(
-                                                m,
-                                              )}
-                                              className="h-6 w-6 border-2 border-card text-[9px]"
-                                            />
-                                          ),
-                                        )}
+                                      {Array.isArray(
+                                        project.team,
+                                      ) &&
+                                        project.team
+                                          .slice(
+                                            0,
+                                            3,
+                                          )
+                                          .map(
+                                            (
+                                              member,
+                                            ) => (
+                                              <Avatar
+                                                key={
+                                                  member
+                                                }
+                                                initials={getInitials(
+                                                  member,
+                                                )}
+                                                className="h-6 w-6 border-2 border-card text-[9px]"
+                                              />
+                                            ),
+                                          )}
 
-                                      {p.team
-                                        .length >
-                                        3 && (
-                                        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
-                                          +
-                                          {
-                                            p
-                                              .team
-                                              .length -
+                                      {Array.isArray(
+                                        project.team,
+                                      ) &&
+                                        project.team.length >
+                                          3 && (
+                                          <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
+                                            +
+                                            {
+                                              project.team.length -
                                               3
-                                          }
-                                        </div>
-                                      )}
+                                            }
+                                          </div>
+                                        )}
                                     </div>
 
                                     <PriorityBadge
                                       priority={
-                                        p.priority
+                                        project.priority
                                       }
                                     />
                                   </div>
@@ -819,7 +1039,7 @@ export default function ProjectsPage() {
 
                                     Due{' '}
                                     {
-                                      p.deadline
+                                      project.deadline
                                     }
                                   </div>
                                 </CardContent>
@@ -843,7 +1063,9 @@ export default function ProjectsPage() {
           )}
         </TabsContent>
 
-        {/* LIST */}
+        {/* ====================================================
+           LIST
+        ==================================================== */}
 
         <TabsContent
           value="list"
@@ -888,22 +1110,22 @@ export default function ProjectsPage() {
                   Array.from({
                     length: 4,
                   }).map(
-                    (_, i) => (
+                    (_, rowIndex) => (
                       <TableRow
                         key={
-                          i
+                          rowIndex
                         }
                       >
                         {Array.from({
                           length: 7,
                         }).map(
                           (
-                            __,
-                            j,
+                            _,
+                            cellIndex,
                           ) => (
                             <TableCell
                               key={
-                                j
+                                cellIndex
                               }
                             >
                               <div className="h-4 w-20 animate-pulse rounded bg-muted" />
@@ -915,34 +1137,34 @@ export default function ProjectsPage() {
                   )
                 ) : (
                   allProjects.map(
-                    (p) => (
+                    (project) => (
                       <TableRow
                         key={
-                          p.id
+                          project.id
                         }
                         className="cursor-pointer"
                         onClick={() =>
                           openProjectFile(
-                            p.id,
+                            project.id,
                           )
                         }
                       >
                         <TableCell className="font-medium">
                           {
-                            p.name
+                            project.name
                           }
                         </TableCell>
 
                         <TableCell className="text-muted-foreground">
                           {
-                            p.client
+                            project.client
                           }
                         </TableCell>
 
                         <TableCell>
                           <StatusBadge
                             status={
-                              p.stage
+                              project.stage
                             }
                           />
                         </TableCell>
@@ -950,47 +1172,53 @@ export default function ProjectsPage() {
                         <TableCell>
                           <ProgressBar
                             value={
-                              p.progress
+                              Number(
+                                project.progress,
+                              ) ||
+                              0
                             }
                           />
                         </TableCell>
 
                         <TableCell>
                           <div className="flex -space-x-1.5">
-                            {p.team
-                              .slice(
-                                0,
-                                3,
-                              )
-                              .map(
-                                (
-                                  m,
-                                ) => (
-                                  <Avatar
-                                    key={
-                                      m
-                                    }
-                                    initials={getInitials(
-                                      m,
-                                    )}
-                                    className="h-6 w-6 border-2 border-card text-[9px]"
-                                  />
-                                ),
-                              )}
+                            {Array.isArray(
+                              project.team,
+                            ) &&
+                              project.team
+                                .slice(
+                                  0,
+                                  3,
+                                )
+                                .map(
+                                  (
+                                    member,
+                                  ) => (
+                                    <Avatar
+                                      key={
+                                        member
+                                      }
+                                      initials={getInitials(
+                                        member,
+                                      )}
+                                      className="h-6 w-6 border-2 border-card text-[9px]"
+                                    />
+                                  ),
+                                )}
                           </div>
                         </TableCell>
 
                         <TableCell>
                           <PriorityBadge
                             priority={
-                              p.priority
+                              project.priority
                             }
                           />
                         </TableCell>
 
                         <TableCell className="text-sm text-muted-foreground">
                           {
-                            p.deadline
+                            project.deadline
                           }
                         </TableCell>
                       </TableRow>
@@ -1003,7 +1231,9 @@ export default function ProjectsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* PROJECT DIALOG */}
+      {/* ======================================================
+         PROJECT DIALOG
+      ====================================================== */}
 
       <Dialog
         open={open}
@@ -1027,66 +1257,77 @@ export default function ProjectsPage() {
             className="space-y-4"
           >
             <div className="space-y-2">
-              <Label htmlFor="name">
+              <Label htmlFor="project-name">
                 Project Name
               </Label>
 
               <Input
-                id="name"
+                id="project-name"
                 value={
                   form.name
                 }
-                onChange={(e) =>
+                onChange={(
+                  event,
+                ) =>
                   setForm({
                     ...form,
-                    name: e.target
-                      .value,
+                    name:
+                      event.target
+                        .value,
                   })
                 }
+                placeholder="Bloom Skincare Website"
                 required
               />
             </div>
 
+            {/* ==================================================
+               CLIENT
+            ================================================== */}
+
+            <div className="space-y-2">
+              <Label htmlFor="project-client">
+                Client
+              </Label>
+
+              <Input
+                id="project-client"
+                value={
+                  form.client
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setForm({
+                    ...form,
+                    client:
+                      event.target
+                        .value,
+                  })
+                }
+                required
+              />
+
+              {form.client_id ? (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                  ✓ Connected to
+                  client{' '}
+                  {
+                    form.client_id
+                  }
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Create this project
+                  from a client
+                  workspace to
+                  establish the
+                  relationship.
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="client">
-                  Client
-                </Label>
-
-                <Input
-                  id="client"
-                  value={
-                    form.client
-                  }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      client:
-                        e.target
-                          .value,
-                    })
-                  }
-                  required
-                />
-
-                {clientId && (
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                    ✓ Connected to
-                    selected client
-                  </p>
-                )}
-
-                {!clientId &&
-                  !editId && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Open New Project
-                      from a client
-                      workspace to link
-                      this project.
-                    </p>
-                  )}
-              </div>
-
               <div className="space-y-2">
                 <Label>
                   Service Type
@@ -1226,77 +1467,83 @@ export default function ProjectsPage() {
                 </Select>
               </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="deadline">
+              <div className="space-y-2">
+                <Label>
                   Deadline
                 </Label>
 
                 <Input
-                  id="deadline"
                   type="date"
                   value={
                     form.deadline
                   }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      deadline:
-                        e.target
-                          .value,
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <Label>
-                  Progress:{' '}
-                  {
-                    form.progress
-                  }
-                  %
-                </Label>
-
-                <Slider
-                  value={[
-                    form.progress,
-                  ]}
-                  max={100}
-                  step={5}
-                  onValueChange={(
-                    value,
+                  onChange={(
+                    event,
                   ) =>
                     setForm({
                       ...form,
-                      progress:
-                        value[0],
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="team">
-                  Team (comma-separated
-                  names)
-                </Label>
-
-                <Input
-                  id="team"
-                  value={
-                    form.team
-                  }
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      team:
-                        e.target
+                      deadline:
+                        event.target
                           .value,
                     })
                   }
-                  placeholder="Andrea Lim, Kai Santos"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>
+                Progress:{' '}
+                {
+                  form.progress
+                }
+                %
+              </Label>
+
+              <Slider
+                value={[
+                  Number(
+                    form.progress,
+                  ) || 0,
+                ]}
+                max={100}
+                step={5}
+                onValueChange={(
+                  values,
+                ) =>
+                  setForm({
+                    ...form,
+                    progress:
+                      values[0] ??
+                      0,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="project-team">
+                Team (comma-separated
+                names)
+              </Label>
+
+              <Input
+                id="project-team"
+                value={
+                  form.team
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setForm({
+                    ...form,
+                    team:
+                      event.target
+                        .value,
+                  })
+                }
+                placeholder="Andrea Lim, Kai Santos"
+              />
             </div>
 
             <DialogFooter>
@@ -1304,16 +1551,15 @@ export default function ProjectsPage() {
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => {
+                  onClick={() =>
                     handleDelete(
                       editId,
-                    );
-
-                    setOpen(
-                      false,
-                    );
-                  }}
+                    )
+                  }
                   className="mr-auto"
+                  disabled={
+                    submitting
+                  }
                 >
                   <Trash2 className="mr-1.5 h-4 w-4" />
                   Delete
@@ -1323,11 +1569,10 @@ export default function ProjectsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() =>
-                  setOpen(
-                    false,
-                  )
-                }
+                onClick={() => {
+                  setOpen(false);
+                  setEditId(null);
+                }}
               >
                 Cancel
               </Button>
