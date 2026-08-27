@@ -27,10 +27,15 @@ import {
   Trash2,
   Pencil,
   Save,
+  X,
   Send,
   Upload,
   Globe,
   Linkedin,
+  MoreHorizontal,
+  CheckCircle2,
+  Clock,
+  Download,
   ExternalLink,
 } from 'lucide-react';
 
@@ -234,10 +239,7 @@ interface Communication {
    LOCAL STORAGE HELPERS
 ============================================================ */
 
-function storageKey(
-  clientId: string,
-  section: string,
-) {
+function storageKey(clientId: string, section: string) {
   return `crm_client_${clientId}_${section}`;
 }
 
@@ -246,18 +248,14 @@ function loadStorage<T>(
   section: string,
   fallback: T,
 ): T {
-  if (typeof window === 'undefined') {
-    return fallback;
-  }
+  if (typeof window === 'undefined') return fallback;
 
   try {
     const raw = localStorage.getItem(
       storageKey(clientId, section),
     );
 
-    if (!raw) {
-      return fallback;
-    }
+    if (!raw) return fallback;
 
     return JSON.parse(raw) as T;
   } catch {
@@ -270,9 +268,7 @@ function saveStorage<T>(
   section: string,
   value: T,
 ) {
-  if (typeof window === 'undefined') {
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
   try {
     localStorage.setItem(
@@ -285,106 +281,51 @@ function saveStorage<T>(
 }
 
 /* ============================================================
-   SAFE HELPERS
-============================================================ */
-
-function safeString(
-  value: unknown,
-): string {
-  return String(value ?? '');
-}
-
-function normalizeSearchValue(
-  value: unknown,
-): string {
-  return safeString(value)
-    .toLowerCase()
-    .trim();
-}
-
-function formatKpiPeso(
-  amount: number,
-) {
-  if (amount >= 1_000_000) {
-    return `₱${(
-      amount / 1_000_000
-    ).toFixed(1)}M`;
-  }
-
-  if (amount >= 1_000) {
-    return `₱${Math.round(
-      amount / 1_000,
-    )}K`;
-  }
-
-  return `₱${Math.round(
-    amount,
-  ).toLocaleString()}`;
-}
-
-/* ============================================================
    MAIN PAGE
 ============================================================ */
 
 export default function ClientsPage() {
   const router = useRouter();
 
-  /*
-   * IMPORTANT PERFORMANCE FIX
-   *
-   * Previously one refreshKey refreshed:
-   * clients + projects + content + invoices.
-   *
-   * Now each dataset has its own refresh key.
-   */
-
-  const [
-    clientsRefreshKey,
-    setClientsRefreshKey,
-  ] = React.useState(0);
+  const [refreshKey, setRefreshKey] =
+    React.useState(0);
 
   const {
     data: clients,
-    loading: clientsLoading,
+    loading,
   } = useFetch(
     fetchClients,
-    [clientsRefreshKey],
+    [refreshKey],
   );
 
   const {
     data: projects,
   } = useFetch(
     fetchProjects,
-    [],
+    [refreshKey],
   );
 
   const {
     data: contentItems,
   } = useFetch(
     fetchContentItems,
-    [],
+    [refreshKey],
   );
 
   const {
     data: invoices,
   } = useFetch(
     fetchInvoices,
-    [],
+    [refreshKey],
   );
 
-  const refetchClients =
-    React.useCallback(() => {
-      setClientsRefreshKey(
-        (key) => key + 1,
-      );
-    }, []);
+  const refetch = () =>
+    setRefreshKey((k) => k + 1);
 
   const [
     selected,
     setSelected,
-  ] = React.useState<string | null>(
-    null,
-  );
+  ] = React.useState<string | null>(null);
 
   const [
     search,
@@ -404,9 +345,7 @@ export default function ClientsPage() {
   const [
     editId,
     setEditId,
-  ] = React.useState<string | null>(
-    null,
-  );
+  ] = React.useState<string | null>(null);
 
   const [
     submitting,
@@ -420,284 +359,112 @@ export default function ClientsPage() {
     emptyForm,
   );
 
-  const allClients =
-    clients ?? [];
+  const allClients = clients ?? [];
+  const allProjects = projects ?? [];
+  const allContent = contentItems ?? [];
+  const allInvoices = invoices ?? [];
 
-  const allProjects =
-    projects ?? [];
-
-  const allContent =
-    contentItems ?? [];
-
-  const allInvoices =
-    invoices ?? [];
-
-  /*
-   * Defer search rendering.
-   *
-   * This helps keep typing responsive
-   * when the client list becomes large.
-   */
-  const deferredSearch =
-    React.useDeferredValue(search);
-
-  /* ==========================================================
+  /* ============================================================
      RETAINER KPI CALCULATIONS
-  ========================================================== */
+  ============================================================ */
 
-  const activeClients =
-    React.useMemo(() => {
-      return allClients.filter(
-        (client: any) =>
-          client.status ===
-          'Active',
-      );
-    }, [allClients]);
+  const activeClients = allClients.filter(
+    (client) => client.status === 'Active',
+  );
 
-  const activeRetainersTotal =
-    React.useMemo(() => {
-      return activeClients.reduce(
-        (
-          total: number,
-          client: any,
-        ) =>
-          total +
-          (Number(
-            client.monthlyRetainer,
-          ) || 0),
-        0,
-      );
-    }, [activeClients]);
+  const activeRetainersTotal = activeClients.reduce(
+    (total, client) =>
+      total + (Number(client.monthlyRetainer) || 0),
+    0,
+  );
 
   const averageRetainer =
-    React.useMemo(() => {
-      if (
-        activeClients.length ===
-        0
-      ) {
-        return 0;
-      }
+    activeClients.length > 0
+      ? activeRetainersTotal / activeClients.length
+      : 0;
+
+  function formatKpiPeso(amount: number) {
+    if (amount >= 1_000_000) {
+      return `₱${(amount / 1_000_000).toFixed(1)}M`;
+    }
+
+    if (amount >= 1_000) {
+      return `₱${Math.round(amount / 1_000)}K`;
+    }
+
+    return `₱${Math.round(amount).toLocaleString()}`;
+  }
+
+  const filtered = allClients.filter(
+    (c) => {
+      const query =
+        search.toLowerCase().trim();
+
+      const matchesSearch =
+        !query ||
+        c.name
+          .toLowerCase()
+          .includes(query) ||
+        c.company
+          .toLowerCase()
+          .includes(query) ||
+        c.email
+          .toLowerCase()
+          .includes(query);
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        c.status === statusFilter;
 
       return (
-        activeRetainersTotal /
-        activeClients.length
+        matchesSearch &&
+        matchesStatus
       );
-    }, [
-      activeClients.length,
-      activeRetainersTotal,
-    ]);
-
-  const onboardingCount =
-    React.useMemo(() => {
-      return allClients.filter(
-        (client: any) =>
-          client.status ===
-          'Onboarding',
-      ).length;
-    }, [allClients]);
-
-  /* ==========================================================
-     SEARCH + FILTER
-  ========================================================== */
-
-  const filtered =
-    React.useMemo(() => {
-      const query =
-        normalizeSearchValue(
-          deferredSearch,
-        );
-
-      return allClients.filter(
-        (client: any) => {
-          const name =
-            normalizeSearchValue(
-              client.name,
-            );
-
-          const company =
-            normalizeSearchValue(
-              client.company,
-            );
-
-          const email =
-            normalizeSearchValue(
-              client.email,
-            );
-
-          const matchesSearch =
-            !query ||
-            name.includes(query) ||
-            company.includes(query) ||
-            email.includes(query);
-
-          const matchesStatus =
-            statusFilter ===
-              'all' ||
-            client.status ===
-              statusFilter;
-
-          return (
-            matchesSearch &&
-            matchesStatus
-          );
-        },
-      );
-    }, [
-      allClients,
-      deferredSearch,
-      statusFilter,
-    ]);
-
-  /* ==========================================================
-     SELECTED CLIENT
-  ========================================================== */
+    },
+  );
 
   const selectedClient =
-    React.useMemo(() => {
-      if (!selected) {
-        return undefined;
-      }
+    allClients.find(
+      (c) => c.id === selected,
+    );
 
-      return allClients.find(
-        (client: any) =>
-          client.id ===
-          selected,
-      );
-    }, [
-      allClients,
-      selected,
-    ]);
-
+  /*
+   * Projects are currently displayed by client company.
+   * This is kept for compatibility with your existing API/data model.
+   * Once every project has client_id, you can switch this to:
+   * p.client_id === selectedClient?.id
+   */
   const clientProjects =
-    React.useMemo(() => {
-      if (!selectedClient) {
-        return [];
-      }
-
-      return allProjects.filter(
-        (project: any) =>
-          project.client ===
-          selectedClient.company,
-      );
-    }, [
-      allProjects,
-      selectedClient,
-    ]);
+    allProjects.filter(
+      (p) =>
+        p.client ===
+        selectedClient?.company,
+    );
 
   const clientContent =
-    React.useMemo(() => {
-      if (!selectedClient) {
-        return [];
-      }
-
-      return allContent.filter(
-        (content: any) =>
-          content.client ===
-          selectedClient.company,
-      );
-    }, [
-      allContent,
-      selectedClient,
-    ]);
+    allContent.filter(
+      (c) =>
+        c.client ===
+        selectedClient?.company,
+    );
 
   const clientInvoices =
-    React.useMemo(() => {
-      if (!selectedClient) {
-        return [];
-      }
-
-      return allInvoices.filter(
-        (invoice: any) =>
-          invoice.client ===
-          selectedClient.company,
-      );
-    }, [
-      allInvoices,
-      selectedClient,
-    ]);
+    allInvoices.filter(
+      (i) =>
+        i.client ===
+        selectedClient?.company,
+    );
 
   /* ==========================================================
-     ADD → PROJECTS
+     ADD CLIENT
   ========================================================== */
 
   function openAdd() {
-    router.push('/projects');
-  }
-
-  function openNewProject(client: any) {
-    if (!client?.id) {
-      router.push('/projects');
-      return;
-    }
-
-    const params = new URLSearchParams({
-      clientId: String(client.id),
-      client: safeString(client.company),
-    });
-
-    router.push(`/projects?${params.toString()}`);
-  }
-
-  /* ==========================================================
-     EDIT CLIENT
-  ========================================================== */
-
-  function openEdit(
-    id: string,
-  ) {
-    const client =
-      allClients.find(
-        (item: any) =>
-          item.id === id,
-      );
-
-    if (!client) {
-      toast.error(
-        'Client could not be found.',
-      );
-      return;
-    }
-
-    setEditId(id);
+    setEditId(null);
 
     setForm({
-      name: safeString(
-        client.name,
-      ),
-      company: safeString(
-        client.company,
-      ),
-      email: safeString(
-        client.email,
-      ),
-      phone: safeString(
-        client.phone,
-      ),
-      servicePackage:
-        safeString(
-          client.servicePackage,
-        ) ||
-        'Social Starter',
-      status:
-        client.status ||
-        'Onboarding',
-      monthlyRetainer:
-        String(
-          client.monthlyRetainer ??
-            0,
-        ),
-      accountManager:
-        safeString(
-          client.accountManager,
-        ),
-      industry:
-        safeString(
-          client.industry,
-        ),
+      ...emptyForm,
       startDate:
-        safeString(
-          client.startDate,
-        ) ||
         new Date()
           .toISOString()
           .split('T')[0],
@@ -707,42 +474,76 @@ export default function ClientsPage() {
   }
 
   /* ==========================================================
+     EDIT CLIENT
+  ========================================================== */
+
+  function openEdit(id: string) {
+    const c =
+      allClients.find(
+        (x) => x.id === id,
+      );
+
+    if (!c) return;
+
+    setEditId(id);
+
+    setForm({
+      name: c.name,
+      company: c.company,
+      email: c.email,
+      phone: c.phone,
+      servicePackage:
+        c.servicePackage,
+      status: c.status,
+      monthlyRetainer:
+        String(c.monthlyRetainer),
+      accountManager:
+        c.accountManager,
+      industry:
+        c.industry,
+      startDate:
+        c.startDate,
+    });
+
+    setOpen(true);
+  }
+
+  /* ==========================================================
+     OPEN PROJECT CREATION FOR CLIENT
+  ========================================================== */
+
+  function openClientProject() {
+    if (!selectedClient) return;
+
+    router.push(
+      `/projects?clientId=${encodeURIComponent(
+        selectedClient.id,
+      )}&client=${encodeURIComponent(
+        selectedClient.company,
+      )}`,
+    );
+  }
+
+  /* ==========================================================
      SAVE CLIENT
   ========================================================== */
 
   async function handleSubmit(
-    event: React.FormEvent,
+    e: React.FormEvent,
   ) {
-    event.preventDefault();
+    e.preventDefault();
 
-    if (
-      !form.name.trim()
-    ) {
+    if (!form.name.trim()) {
       toast.error(
         'Client name is required.',
       );
       return;
     }
 
-    if (
-      !form.company.trim()
-    ) {
-      toast.error(
-        'Company name is required.',
-      );
-      return;
-    }
-
-    if (
-      !form.email.trim()
-    ) {
+    if (!form.email.trim()) {
       toast.error(
         'Client email is required.',
       );
-      return;
-    }
-
-    if (submitting) {
       return;
     }
 
@@ -750,18 +551,13 @@ export default function ClientsPage() {
 
     try {
       const payload = {
-        name:
-          form.name.trim(),
-        company:
-          form.company.trim(),
-        email:
-          form.email.trim(),
-        phone:
-          form.phone.trim(),
+        name: form.name.trim(),
+        company: form.company.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
         service_package:
           form.servicePackage,
-        status:
-          form.status,
+        status: form.status,
         monthly_retainer:
           Number(
             form.monthlyRetainer,
@@ -793,41 +589,20 @@ export default function ClientsPage() {
         );
       }
 
-      /*
-       * Close immediately after successful
-       * database operation.
-       */
       setOpen(false);
       setEditId(null);
       setForm({
         ...emptyForm,
       });
 
-      /*
-       * Only refetch CLIENTS.
-       *
-       * Previously this caused projects,
-       * content and invoices to refetch too.
-       */
-      refetchClients();
-    } catch (error: unknown) {
-      console.error(
-        'Client save error:',
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong while saving the client.';
-
+      refetch();
+    } catch (err: any) {
       toast.error(
-        editId
-          ? 'Failed to update client.'
-          : 'Failed to save client.',
+        'Failed to save client.',
         {
           description:
-            message,
+            err?.message ||
+            'Something went wrong.',
         },
       );
     } finally {
@@ -842,55 +617,29 @@ export default function ClientsPage() {
   async function handleDelete(
     id: string,
   ) {
-    if (!id) {
-      toast.error(
-        'Invalid client ID.',
-      );
-      return;
-    }
-
     const confirmed =
       window.confirm(
         'Delete this client? This will remove the client record.',
       );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
       await deleteClient(id);
 
-      /*
-       * Clear the selected client
-       * immediately after successful deletion.
-       */
-      setSelected(null);
-
       toast.success(
-        'Client deleted successfully.',
+        'Client deleted.',
       );
 
-      /*
-       * Only refresh clients.
-       */
-      refetchClients();
-    } catch (error: unknown) {
-      console.error(
-        'Client delete error:',
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong while deleting the client.';
-
+      setSelected(null);
+      refetch();
+    } catch (err: any) {
       toast.error(
         'Failed to delete client.',
         {
           description:
-            message,
+            err?.message ||
+            'Something went wrong.',
         },
       );
     }
@@ -904,15 +653,9 @@ export default function ClientsPage() {
     return (
       <ClientWorkspace
         client={selectedClient}
-        clientProjects={
-          clientProjects
-        }
-        clientContent={
-          clientContent
-        }
-        clientInvoices={
-          clientInvoices
-        }
+        clientProjects={clientProjects}
+        clientContent={clientContent}
+        clientInvoices={clientInvoices}
         onBack={() =>
           setSelected(null)
         }
@@ -926,25 +669,17 @@ export default function ClientsPage() {
             selectedClient.id,
           )
         }
-        onRefresh={
-          refetchClients
-        }
+        onRefresh={refetch}
         router={router}
       >
         <ClientDialog
           open={open}
-          onOpenChange={
-            setOpen
-          }
+          onOpenChange={setOpen}
           editId={editId}
           form={form}
           setForm={setForm}
-          submitting={
-            submitting
-          }
-          onSubmit={
-            handleSubmit
-          }
+          submitting={submitting}
+          onSubmit={handleSubmit}
         />
       </ClientWorkspace>
     );
@@ -963,16 +698,13 @@ export default function ClientsPage() {
         <Button
           size="sm"
           onClick={openAdd}
-          type="button"
         >
           <Plus className="mr-1.5 h-4 w-4" />
           Add Client
         </Button>
       </PageHeader>
 
-      {/* ======================================================
-         KPIs
-      ====================================================== */}
+      {/* KPIs */}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
@@ -1013,7 +745,11 @@ export default function ClientsPage() {
         <KpiCard
           label="Onboarding"
           value={String(
-            onboardingCount,
+            allClients.filter(
+              (c) =>
+                c.status ===
+                'Onboarding',
+            ).length,
           )}
           icon={UsersIcon}
           accent="text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400"
@@ -1021,9 +757,7 @@ export default function ClientsPage() {
         />
       </div>
 
-      {/* ======================================================
-         SEARCH / FILTER
-      ====================================================== */}
+      {/* SEARCH / FILTER */}
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -1031,63 +765,47 @@ export default function ClientsPage() {
 
           <Input
             placeholder="Search clients by name, company or email..."
-            className="pl-9 pr-20"
+            className="pl-9"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setSearch('');
-            }}
-            type="search"
-            autoComplete="off"
+            onChange={(e) =>
+              setSearch(
+                e.target.value,
+              )
+            }
           />
-
-          {search && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="absolute right-1 top-1/2 h-7 -translate-y-1/2 px-2 text-xs"
-              onClick={() => setSearch('')}
-            >
-              Clear
-            </Button>
-          )}
         </div>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-44">
+        <Select
+          value={statusFilter}
+          onValueChange={
+            setStatusFilter
+          }
+        >
+          <SelectTrigger className="w-full sm:w-40">
             <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
-            <SelectValue placeholder="All statuses" />
+            <SelectValue />
           </SelectTrigger>
 
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {statusOptions.map((status) => (
-              <SelectItem key={status} value={status}>
-                {status}
-              </SelectItem>
-            ))}
+            <SelectItem value="all">
+              All statuses
+            </SelectItem>
+
+            {statusOptions.map(
+              (status) => (
+                <SelectItem
+                  key={status}
+                  value={status}
+                >
+                  {status}
+                </SelectItem>
+              ),
+            )}
           </SelectContent>
         </Select>
-
-        {(search || statusFilter !== 'all') && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSearch('');
-              setStatusFilter('all');
-            }}
-          >
-            Reset
-          </Button>
-        )}
       </div>
 
-      {/* ======================================================
-         CLIENT TABLE
-      ====================================================== */}
+      {/* CLIENT TABLE */}
 
       <Card className="mt-4 overflow-hidden">
         <Table>
@@ -1124,32 +842,23 @@ export default function ClientsPage() {
               <TableHead>
                 Last Activity
               </TableHead>
-
-              <TableHead className="text-right">
-                Actions
-              </TableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
-            {clientsLoading ? (
+            {loading ? (
               Array.from({
                 length: 4,
-              }).map((_, index) => (
+              }).map((_, i) => (
                 <TableRow
-                  key={`loading-${index}`}
+                  key={i}
                 >
                   {Array.from({
-                    length: 9,
+                    length: 8,
                   }).map(
-                    (
-                      __,
-                      columnIndex,
-                    ) => (
+                    (_, j) => (
                       <TableCell
-                        key={
-                          columnIndex
-                        }
+                        key={j}
                       >
                         <div className="h-4 w-20 animate-pulse rounded bg-muted" />
                       </TableCell>
@@ -1157,180 +866,119 @@ export default function ClientsPage() {
                   )}
                 </TableRow>
               ))
-            ) : filtered.length >
-              0 ? (
-              /*
-               * Removed per-row framer-motion
-               * animation from the client table.
-               *
-               * This avoids doing animation work
-               * for every client whenever search/filter
-               * changes.
-               */
-              filtered.map(
-                (
-                  client: any,
-                ) => (
-                  <TableRow
-                    key={
-                      client.id
-                    }
-                    className="cursor-pointer border-b transition-colors hover:bg-muted/50"
-                    onClick={() =>
-                      setSelected(
-                        client.id,
-                      )
-                    }
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar
-                          initials={safeString(
-                            client.name,
-                          )
-                            .split(
-                              ' ',
-                            )
-                            .filter(
-                              Boolean,
-                            )
-                            .map(
-                              (
-                                name: string,
-                              ) =>
-                                name[0],
-                            )
-                            .join(
-                              '',
-                            )}
-                          className="h-9 w-9"
-                        />
+            ) : (
+              <AnimatePresence>
+                {filtered.map(
+                  (c, i) => (
+                    <motion.tr
+                      key={c.id}
+                      initial={{
+                        opacity: 0,
+                      }}
+                      animate={{
+                        opacity: 1,
+                      }}
+                      transition={{
+                        delay:
+                          i *
+                          0.03,
+                      }}
+                      className="cursor-pointer border-b transition-colors hover:bg-muted/50"
+                      onClick={() =>
+                        setSelected(
+                          c.id,
+                        )
+                      }
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            initials={c.name
+                              .split(
+                                ' ',
+                              )
+                              .map(
+                                (n) =>
+                                  n[0],
+                              )
+                              .join(
+                                '',
+                              )}
+                            className="h-9 w-9"
+                          />
 
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">
-                            {safeString(
-                              client.name,
-                            )}
-                          </p>
+                          <div>
+                            <p className="font-medium">
+                              {c.name}
+                            </p>
 
-                          <p className="truncate text-xs text-muted-foreground">
-                            {safeString(
-                              client.email,
-                            )}
-                          </p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.email}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
+                      </TableCell>
 
-                    <TableCell className="font-medium">
-                      {safeString(
-                        client.company,
-                      )}
-                    </TableCell>
+                      <TableCell className="font-medium">
+                        {c.company}
+                      </TableCell>
 
-                    <TableCell className="text-muted-foreground">
-                      {safeString(
-                        client.servicePackage,
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      <StatusBadge
-                        status={
-                          client.status
+                      <TableCell className="text-muted-foreground">
+                        {
+                          c.servicePackage
                         }
-                      />
-                    </TableCell>
+                      </TableCell>
 
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatPeso(
-                        Number(
-                          client.monthlyRetainer,
-                        ) || 0,
-                      )}
-                    </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          status={
+                            c.status
+                          }
+                        />
+                      </TableCell>
 
-                    <TableCell className="text-muted-foreground">
-                      {safeString(
-                        client.accountManager,
-                      )}
-                    </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatPeso(
+                          c.monthlyRetainer,
+                        )}
+                      </TableCell>
 
-                    <TableCell className="text-sm text-muted-foreground">
-                      {client.nextMeeting ===
-                      '—'
-                        ? '—'
-                        : safeString(
-                            client.nextMeeting,
-                          )
-                            .split(
+                      <TableCell className="text-muted-foreground">
+                        {
+                          c.accountManager
+                        }
+                      </TableCell>
+
+                      <TableCell className="text-sm text-muted-foreground">
+                        {c.nextMeeting ===
+                        '—'
+                          ? '—'
+                          : c.nextMeeting?.split(
                               'T',
                             )[0] ||
-                          '—'}
-                    </TableCell>
+                            '—'}
+                      </TableCell>
 
-                    <TableCell className="text-sm text-muted-foreground">
-                      {safeString(
-                        client.lastActivity,
-                      ) || '—'}
-                    </TableCell>
-
-                    <TableCell
-                      className="text-right"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Edit ${safeString(client.name)}`}
-                          title="Edit client"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openEdit(client.id);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Delete ${safeString(client.name)}`}
-                          title="Delete client"
-                          className="text-destructive hover:text-destructive"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleDelete(client.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ),
-              )
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={9}
-                  className="py-12 text-center"
-                >
-                  <div className="text-sm text-muted-foreground">
-                    {search ||
-                    statusFilter !==
-                      'all'
-                      ? 'No clients match your search or filter.'
-                      : 'No clients found.'}
-                  </div>
-                </TableCell>
-              </TableRow>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {
+                          c.lastActivity
+                        }
+                      </TableCell>
+                    </motion.tr>
+                  ),
+                )}
+              </AnimatePresence>
             )}
           </TableBody>
         </Table>
+
+        {filtered.length === 0 &&
+          !loading && (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              No clients match
+              your search.
+            </div>
+          )}
       </Card>
 
       <ClientDialog
@@ -1339,9 +987,7 @@ export default function ClientsPage() {
         editId={editId}
         form={form}
         setForm={setForm}
-        submitting={
-          submitting
-        }
+        submitting={submitting}
         onSubmit={handleSubmit}
       />
     </DashboardShell>
@@ -1398,20 +1044,18 @@ function ClientWorkspace({
   const [
     brand,
     setBrand,
-  ] = React.useState<BrandGuideline>(
-    {
-      colors: [],
-      typography: '',
-      notes: '',
-    },
-  );
+  ] = React.useState<BrandGuideline>({
+    colors: [],
+    typography: '',
+    notes: '',
+  });
 
   const [
     notes,
     setNotes,
-  ] = React.useState<
-    ClientNote[]
-  >([]);
+  ] = React.useState<ClientNote[]>(
+    [],
+  );
 
   const [
     progressEntries,
@@ -1423,9 +1067,9 @@ function ClientWorkspace({
   const [
     files,
     setFiles,
-  ] = React.useState<
-    ClientFile[]
-  >([]);
+  ] = React.useState<ClientFile[]>(
+    [],
+  );
 
   const [
     workspaceInvoices,
@@ -1442,12 +1086,9 @@ function ClientWorkspace({
   >([]);
 
   React.useEffect(() => {
-    const clientId =
-      client.id;
-
     setSocials(
       loadStorage(
-        clientId,
+        client.id,
         'socials',
         [],
       ),
@@ -1455,7 +1096,7 @@ function ClientWorkspace({
 
     setBrand(
       loadStorage(
-        clientId,
+        client.id,
         'brand',
         {
           colors:
@@ -1469,7 +1110,7 @@ function ClientWorkspace({
 
     setNotes(
       loadStorage(
-        clientId,
+        client.id,
         'notes',
         [],
       ),
@@ -1477,7 +1118,7 @@ function ClientWorkspace({
 
     setProgressEntries(
       loadStorage(
-        clientId,
+        client.id,
         'progress',
         [],
       ),
@@ -1485,7 +1126,7 @@ function ClientWorkspace({
 
     setFiles(
       loadStorage(
-        clientId,
+        client.id,
         'files',
         [],
       ),
@@ -1493,7 +1134,7 @@ function ClientWorkspace({
 
     setWorkspaceInvoices(
       loadStorage(
-        clientId,
+        client.id,
         'invoices',
         [],
       ),
@@ -1501,7 +1142,7 @@ function ClientWorkspace({
 
     setCommunications(
       loadStorage(
-        clientId,
+        client.id,
         'communications',
         [],
       ),
@@ -1647,7 +1288,6 @@ function ClientWorkspace({
     value: SocialAccount[],
   ) {
     setSocials(value);
-
     saveStorage(
       client.id,
       'socials',
@@ -1659,7 +1299,6 @@ function ClientWorkspace({
     value: BrandGuideline,
   ) {
     setBrand(value);
-
     saveStorage(
       client.id,
       'brand',
@@ -1671,7 +1310,6 @@ function ClientWorkspace({
     value: ClientNote[],
   ) {
     setNotes(value);
-
     saveStorage(
       client.id,
       'notes',
@@ -1683,7 +1321,6 @@ function ClientWorkspace({
     value: ProgressEntry[],
   ) {
     setProgressEntries(value);
-
     saveStorage(
       client.id,
       'progress',
@@ -1695,7 +1332,6 @@ function ClientWorkspace({
     value: ClientFile[],
   ) {
     setFiles(value);
-
     saveStorage(
       client.id,
       'files',
@@ -1707,7 +1343,6 @@ function ClientWorkspace({
     value: ClientInvoice[],
   ) {
     setWorkspaceInvoices(value);
-
     saveStorage(
       client.id,
       'invoices',
@@ -1719,7 +1354,6 @@ function ClientWorkspace({
     value: Communication[],
   ) {
     setCommunications(value);
-
     saveStorage(
       client.id,
       'communications',
@@ -1762,9 +1396,7 @@ function ClientWorkspace({
   }
 
   function saveSocial() {
-    if (
-      !socialForm.handle.trim()
-    ) {
+    if (!socialForm.handle.trim()) {
       toast.error(
         'Social handle is required.',
       );
@@ -1773,15 +1405,14 @@ function ClientWorkspace({
 
     if (socialEditId) {
       saveSocials(
-        socials.map(
-          (social) =>
-            social.id ===
-            socialEditId
-              ? {
-                  ...social,
-                  ...socialForm,
-                }
-              : social,
+        socials.map((s) =>
+          s.id ===
+          socialEditId
+            ? {
+                ...s,
+                ...socialForm,
+              }
+            : s,
         ),
       );
 
@@ -1811,8 +1442,7 @@ function ClientWorkspace({
   ) {
     saveSocials(
       socials.filter(
-        (social) =>
-          social.id !== id,
+        (s) => s.id !== id,
       ),
     );
   }
@@ -1850,8 +1480,7 @@ function ClientWorkspace({
     setNoteForm({
       subject:
         note.subject,
-      body:
-        note.body,
+      body: note.body,
     });
 
     setNoteOpen(true);
@@ -1870,18 +1499,17 @@ function ClientWorkspace({
 
     if (noteEditId) {
       saveNotes(
-        notes.map(
-          (note) =>
-            note.id ===
-            noteEditId
-              ? {
-                  ...note,
-                  subject:
-                    noteForm.subject,
-                  body:
-                    noteForm.body,
-                }
-              : note,
+        notes.map((n) =>
+          n.id ===
+          noteEditId
+            ? {
+                ...n,
+                subject:
+                  noteForm.subject,
+                body:
+                  noteForm.body,
+              }
+            : n,
         ),
       );
     } else {
@@ -1893,7 +1521,8 @@ function ClientWorkspace({
             noteForm.subject,
           body:
             noteForm.body,
-          date: new Date().toISOString(),
+          date:
+            new Date().toISOString(),
         },
         ...notes,
       ]);
@@ -1913,8 +1542,7 @@ function ClientWorkspace({
   ) {
     saveNotes(
       notes.filter(
-        (note) =>
-          note.id !== id,
+        (n) => n.id !== id,
       ),
     );
   }
@@ -1974,8 +1602,7 @@ function ClientWorkspace({
   ) {
     saveProgress(
       progressEntries.filter(
-        (entry) =>
-          entry.id !== id,
+        (p) => p.id !== id,
       ),
     );
   }
@@ -1999,10 +1626,8 @@ function ClientWorkspace({
       {
         id:
           crypto.randomUUID(),
-        name:
-          fileForm.name,
-        title:
-          fileForm.title,
+        name: fileForm.name,
+        title: fileForm.title,
         summary:
           fileForm.summary,
         uploadedAt:
@@ -2029,8 +1654,7 @@ function ClientWorkspace({
   ) {
     saveFiles(
       files.filter(
-        (file) =>
-          file.id !== id,
+        (f) => f.id !== id,
       ),
     );
   }
@@ -2099,26 +1723,25 @@ function ClientWorkspace({
       return;
     }
 
-    const invoice: ClientInvoice =
-      {
-        id:
-          invoiceEditId ||
-          crypto.randomUUID(),
-        invoiceNumber:
-          invoiceForm.invoiceNumber,
-        service:
-          invoiceForm.service,
-        amount:
-          Number(
-            invoiceForm.amount,
-          ) || 0,
-        status:
-          invoiceForm.status,
-        date:
-          invoiceForm.date,
-        dueDate:
-          invoiceForm.dueDate,
-      };
+    const invoice: ClientInvoice = {
+      id:
+        invoiceEditId ||
+        crypto.randomUUID(),
+      invoiceNumber:
+        invoiceForm.invoiceNumber,
+      service:
+        invoiceForm.service,
+      amount:
+        Number(
+          invoiceForm.amount,
+        ) || 0,
+      status:
+        invoiceForm.status,
+      date:
+        invoiceForm.date,
+      dueDate:
+        invoiceForm.dueDate,
+    };
 
     if (invoiceEditId) {
       saveInvoices(
@@ -2151,8 +1774,7 @@ function ClientWorkspace({
   ) {
     saveInvoices(
       workspaceInvoices.filter(
-        (invoice) =>
-          invoice.id !== id,
+        (i) => i.id !== id,
       ),
     );
   }
@@ -2181,34 +1803,24 @@ Dev|withMe`,
   }
 
   async function handleSendEmail() {
-    if (
-      !client.email?.trim()
-    ) {
+    if (!client.email?.trim()) {
       toast.error(
         'This client does not have an email address.',
       );
       return;
     }
 
-    if (
-      !emailSubject.trim()
-    ) {
+    if (!emailSubject.trim()) {
       toast.error(
         'Email subject is required.',
       );
       return;
     }
 
-    if (
-      !emailMessage.trim()
-    ) {
+    if (!emailMessage.trim()) {
       toast.error(
         'Email message is required.',
       );
-      return;
-    }
-
-    if (sendingEmail) {
       return;
     }
 
@@ -2224,13 +1836,15 @@ Dev|withMe`,
               'Content-Type':
                 'application/json',
             },
-            body: JSON.stringify({
-              to: client.email,
-              subject:
-                emailSubject,
-              message:
-                emailMessage,
-            }),
+            body: JSON.stringify(
+              {
+                to: client.email,
+                subject:
+                  emailSubject,
+                message:
+                  emailMessage,
+              },
+            ),
           },
         );
 
@@ -2270,22 +1884,18 @@ Dev|withMe`,
       setEmailOpen(false);
       setEmailSubject('');
       setEmailMessage('');
-    } catch (error: unknown) {
+    } catch (err: any) {
       console.error(
         'Client email error:',
-        error,
+        err,
       );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong while sending the email.';
 
       toast.error(
         'Failed to send email',
         {
           description:
-            message,
+            err?.message ||
+            'Something went wrong while sending the email.',
         },
       );
     } finally {
@@ -2297,43 +1907,24 @@ Dev|withMe`,
      COMBINED DATA
   ========================================================== */
 
-  const combinedInvoices =
-    React.useMemo(
-      () => [
-        ...workspaceInvoices,
-        ...clientInvoices.map(
-          (invoice: any) => ({
-            id: `api-${invoice.id}`,
-            invoiceNumber:
-              invoice.id,
-            service:
-              invoice.service,
-            amount:
-              invoice.amount,
-            status:
-              invoice.status,
-            date: '',
-            dueDate: '',
-          }),
-        ),
-      ],
-      [
-        workspaceInvoices,
-        clientInvoices,
-      ],
-    );
-
-  const sortedProgressEntries =
-    React.useMemo(() => {
-      return [
-        ...progressEntries,
-      ].sort(
-        (a, b) =>
-          b.date.localeCompare(
-            a.date,
-          ),
-      );
-    }, [progressEntries]);
+  const combinedInvoices = [
+    ...workspaceInvoices,
+    ...clientInvoices.map(
+      (inv: any) => ({
+        id: `api-${inv.id}`,
+        invoiceNumber:
+          inv.id,
+        service:
+          inv.service,
+        amount:
+          inv.amount,
+        status:
+          inv.status,
+        date: '',
+        dueDate: '',
+      }),
+    ),
+  ];
 
   /* ==========================================================
      RENDER
@@ -2342,7 +1933,6 @@ Dev|withMe`,
   return (
     <DashboardShell>
       <button
-        type="button"
         onClick={onBack}
         className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
@@ -2350,27 +1940,18 @@ Dev|withMe`,
         Back to clients
       </button>
 
-      {/* ======================================================
-         CLIENT PROFILE HEADER
-      ====================================================== */}
+      {/* CLIENT PROFILE HEADER */}
 
       <Card className="mb-6">
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <Avatar
-                initials={safeString(
-                  client.name,
-                )
+                initials={client.name
                   .split(' ')
-                  .filter(
-                    Boolean,
-                  )
                   .map(
-                    (
-                      name: string,
-                    ) =>
-                      name[0],
+                    (n: string) =>
+                      n[0],
                   )
                   .join('')}
                 className="h-16 w-16 text-lg"
@@ -2378,16 +1959,11 @@ Dev|withMe`,
 
               <div>
                 <h2 className="text-xl font-bold">
-                  {safeString(
-                    client.name,
-                  )}
+                  {client.name}
                 </h2>
 
                 <p className="text-sm text-muted-foreground">
-                  {safeString(
-                    client.company,
-                  )}
-
+                  {client.company}
                   {client.industry
                     ? ` · ${client.industry}`
                     : ''}
@@ -2401,9 +1977,9 @@ Dev|withMe`,
                   />
 
                   <Badge variant="secondary">
-                    {safeString(
-                      client.servicePackage,
-                    )}
+                    {
+                      client.servicePackage
+                    }
                   </Badge>
                 </div>
               </div>
@@ -2411,31 +1987,24 @@ Dev|withMe`,
 
             <div className="flex flex-wrap gap-2">
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
-                onClick={
-                  onEdit
-                }
+                onClick={onEdit}
               >
                 <Pencil className="mr-1.5 h-4 w-4" />
                 Edit
               </Button>
 
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
-                onClick={
-                  onDelete
-                }
+                onClick={onDelete}
               >
                 <Trash2 className="mr-1.5 h-4 w-4" />
                 Delete
               </Button>
 
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
                 onClick={
@@ -2447,9 +2016,10 @@ Dev|withMe`,
               </Button>
 
               <Button
-                type="button"
                 size="sm"
-                onClick={() => openNewProject(client)}
+                onClick={
+                  openClientProject
+                }
               >
                 <Plus className="mr-1.5 h-4 w-4" />
                 New Project
@@ -2465,9 +2035,7 @@ Dev|withMe`,
 
               <p className="text-lg font-bold tabular-nums">
                 {formatPeso(
-                  Number(
-                    client.monthlyRetainer,
-                  ) || 0,
+                  client.monthlyRetainer,
                 )}
               </p>
             </div>
@@ -2508,9 +2076,7 @@ Dev|withMe`,
         </CardContent>
       </Card>
 
-      {/* ======================================================
-         TABS
-      ====================================================== */}
+      {/* TABS */}
 
       <Tabs
         value={activeTab}
@@ -2548,9 +2114,7 @@ Dev|withMe`,
           </TabsTrigger>
         </TabsList>
 
-        {/* ====================================================
-           OVERVIEW
-        ==================================================== */}
+        {/* OVERVIEW */}
 
         <TabsContent
           value="overview"
@@ -2567,12 +2131,9 @@ Dev|withMe`,
                   </CardTitle>
 
                   <Button
-                    type="button"
                     size="icon"
                     variant="ghost"
-                    onClick={
-                      onEdit
-                    }
+                    onClick={onEdit}
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -2622,7 +2183,6 @@ Dev|withMe`,
                   </CardTitle>
 
                   <Button
-                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={
@@ -2636,8 +2196,7 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent className="space-y-3">
-                {socials.length ===
-                0 ? (
+                {socials.length === 0 ? (
                   <div className="rounded-lg border border-dashed p-5 text-center">
                     <Globe className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
 
@@ -2687,7 +2246,6 @@ Dev|withMe`,
                         <div className="flex gap-1">
                           {social.url && (
                             <Button
-                              type="button"
                               size="icon"
                               variant="ghost"
                               asChild
@@ -2705,7 +2263,6 @@ Dev|withMe`,
                           )}
 
                           <Button
-                            type="button"
                             size="icon"
                             variant="ghost"
                             onClick={() =>
@@ -2718,7 +2275,6 @@ Dev|withMe`,
                           </Button>
 
                           <Button
-                            type="button"
                             size="icon"
                             variant="ghost"
                             onClick={() =>
@@ -2747,7 +2303,6 @@ Dev|withMe`,
                   </CardTitle>
 
                   <Button
-                    type="button"
                     size="icon"
                     variant="ghost"
                     onClick={
@@ -2761,8 +2316,7 @@ Dev|withMe`,
 
               <CardContent>
                 {brand.colors
-                  .length ===
-                0 ? (
+                  .length === 0 ? (
                   <div className="rounded-lg border border-dashed p-5 text-center">
                     <Palette className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
 
@@ -2830,9 +2384,7 @@ Dev|withMe`,
           </div>
         </TabsContent>
 
-        {/* ====================================================
-           PROJECTS
-        ==================================================== */}
+        {/* PROJECTS */}
 
         <TabsContent
           value="projects"
@@ -2851,9 +2403,10 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
-              onClick={() => openNewProject(client)}
+              onClick={
+                openClientProject
+              }
             >
               <Plus className="mr-1.5 h-4 w-4" />
               New Project
@@ -2861,8 +2414,7 @@ Dev|withMe`,
           </div>
 
           <div className="space-y-3">
-            {clientProjects.length ===
-            0 ? (
+            {clientProjects.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
                   <FolderKanban className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -2880,12 +2432,16 @@ Dev|withMe`,
               </Card>
             ) : (
               clientProjects.map(
-                (
-                  project: any,
-                ) => (
+                (project: any) => (
                   <Card
                     key={
                       project.id
+                    }
+                    className="cursor-pointer transition-shadow hover:shadow-md"
+                    onClick={() =>
+                      router.push(
+                        `/projects/${project.id}`,
+                      )
                     }
                   >
                     <CardContent className="p-4">
@@ -2937,9 +2493,7 @@ Dev|withMe`,
           </div>
         </TabsContent>
 
-        {/* ====================================================
-           CONTENT CALENDAR
-        ==================================================== */}
+        {/* CONTENT CALENDAR */}
 
         <TabsContent
           value="calendar"
@@ -2959,7 +2513,6 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
               onClick={
                 openAddProgress
@@ -2979,17 +2532,14 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent className="space-y-3">
-                {clientContent.length ===
-                0 ? (
+                {clientContent.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     No content scheduled
                     yet.
                   </p>
                 ) : (
                   clientContent.map(
-                    (
-                      content: any,
-                    ) => (
+                    (content: any) => (
                       <div
                         key={
                           content.id
@@ -3036,8 +2586,7 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent>
-                {sortedProgressEntries.length ===
-                0 ? (
+                {progressEntries.length === 0 ? (
                   <div className="py-8 text-center">
                     <CalendarDays className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
 
@@ -3048,55 +2597,63 @@ Dev|withMe`,
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {sortedProgressEntries.map(
-                      (
-                        entry,
-                      ) => (
-                        <div
-                          key={
-                            entry.id
-                          }
-                          className="relative border-l pl-4"
-                        >
-                          <div className="absolute -left-1.5 top-1 h-3 w-3 rounded-full bg-primary" />
+                    {[
+                      ...progressEntries,
+                    ]
+                      .sort(
+                        (a, b) =>
+                          b.date.localeCompare(
+                            a.date,
+                          ),
+                      )
+                      .map(
+                        (
+                          entry,
+                        ) => (
+                          <div
+                            key={
+                              entry.id
+                            }
+                            className="relative border-l pl-4"
+                          >
+                            <div className="absolute -left-1.5 top-1 h-3 w-3 rounded-full bg-primary" />
 
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-medium text-primary">
-                                {
-                                  entry.date
-                                }
-                              </p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-medium text-primary">
+                                  {
+                                    entry.date
+                                  }
+                                </p>
 
-                              <p className="mt-1 text-sm font-semibold">
-                                {
-                                  entry.project
-                                }
-                              </p>
+                                <p className="mt-1 text-sm font-semibold">
+                                  {
+                                    entry.project
+                                  }
+                                </p>
 
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {
-                                  entry.progress
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  {
+                                    entry.progress
+                                  }
+                                </p>
+                              </div>
+
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  deleteProgress(
+                                    entry.id,
+                                  )
                                 }
-                              </p>
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              onClick={() =>
-                                deleteProgress(
-                                  entry.id,
-                                )
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
                           </div>
-                        </div>
-                      ),
-                    )}
+                        ),
+                      )}
                   </div>
                 )}
               </CardContent>
@@ -3104,9 +2661,7 @@ Dev|withMe`,
           </div>
         </TabsContent>
 
-        {/* ====================================================
-           FILES
-        ==================================================== */}
+        {/* FILES */}
 
         <TabsContent
           value="files"
@@ -3126,7 +2681,6 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
               onClick={() =>
                 setFileOpen(true)
@@ -3139,8 +2693,7 @@ Dev|withMe`,
 
           <Card>
             <CardContent className="p-0">
-              {files.length ===
-              0 ? (
+              {files.length === 0 ? (
                 <div className="py-14 text-center">
                   <Paperclip className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
 
@@ -3199,7 +2752,6 @@ Dev|withMe`,
                           </span>
 
                           <Button
-                            type="button"
                             size="icon"
                             variant="ghost"
                             onClick={() =>
@@ -3220,9 +2772,7 @@ Dev|withMe`,
           </Card>
         </TabsContent>
 
-        {/* ====================================================
-           INVOICES
-        ==================================================== */}
+        {/* INVOICES */}
 
         <TabsContent
           value="invoices"
@@ -3241,7 +2791,6 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
               onClick={
                 openAddInvoice
@@ -3283,8 +2832,7 @@ Dev|withMe`,
               </TableHeader>
 
               <TableBody>
-                {combinedInvoices.length ===
-                0 ? (
+                {combinedInvoices.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={6}
@@ -3299,9 +2847,7 @@ Dev|withMe`,
                   </TableRow>
                 ) : (
                   combinedInvoices.map(
-                    (
-                      invoice,
-                    ) => {
+                    (invoice) => {
                       const editable =
                         !invoice.id.startsWith(
                           'api-',
@@ -3327,9 +2873,7 @@ Dev|withMe`,
 
                           <TableCell className="tabular-nums">
                             {formatPeso(
-                              Number(
-                                invoice.amount,
-                              ) || 0,
+                              invoice.amount,
                             )}
                           </TableCell>
 
@@ -3352,7 +2896,6 @@ Dev|withMe`,
                             {editable && (
                               <div className="flex justify-end gap-1">
                                 <Button
-                                  type="button"
                                   size="icon"
                                   variant="ghost"
                                   onClick={() =>
@@ -3365,7 +2908,6 @@ Dev|withMe`,
                                 </Button>
 
                                 <Button
-                                  type="button"
                                   size="icon"
                                   variant="ghost"
                                   onClick={() =>
@@ -3389,9 +2931,7 @@ Dev|withMe`,
           </Card>
         </TabsContent>
 
-        {/* ====================================================
-           NOTES
-        ==================================================== */}
+        {/* NOTES */}
 
         <TabsContent
           value="notes"
@@ -3411,7 +2951,6 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
               onClick={
                 openAddNote
@@ -3422,8 +2961,7 @@ Dev|withMe`,
             </Button>
           </div>
 
-          {notes.length ===
-          0 ? (
+          {notes.length === 0 ? (
             <Card>
               <CardContent className="py-14 text-center">
                 <StickyNote className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -3466,7 +3004,6 @@ Dev|withMe`,
 
                         <div className="flex gap-1">
                           <Button
-                            type="button"
                             size="icon"
                             variant="ghost"
                             onClick={() =>
@@ -3479,7 +3016,6 @@ Dev|withMe`,
                           </Button>
 
                           <Button
-                            type="button"
                             size="icon"
                             variant="ghost"
                             onClick={() =>
@@ -3508,9 +3044,7 @@ Dev|withMe`,
           )}
         </TabsContent>
 
-        {/* ====================================================
-           COMMUNICATIONS
-        ==================================================== */}
+        {/* COMMUNICATIONS */}
 
         <TabsContent
           value="communications"
@@ -3529,7 +3063,6 @@ Dev|withMe`,
             </div>
 
             <Button
-              type="button"
               size="sm"
               onClick={
                 openEmailComposer
@@ -3542,8 +3075,7 @@ Dev|withMe`,
 
           <Card>
             <CardContent className="p-0">
-              {communications.length ===
-              0 ? (
+              {communications.length === 0 ? (
                 <div className="py-14 text-center">
                   <MessageSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
 
@@ -3611,9 +3143,7 @@ Dev|withMe`,
         </TabsContent>
       </Tabs>
 
-      {/* ======================================================
-         SOCIAL DIALOG
-      ====================================================== */}
+      {/* SOCIAL DIALOG */}
 
       <Dialog
         open={socialOpen}
@@ -3644,13 +3174,11 @@ Dev|withMe`,
                   value,
                 ) =>
                   setSocialForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...socialForm,
                       platform:
                         value,
-                    }),
+                    },
                   )
                 }
               >
@@ -3688,16 +3216,14 @@ Dev|withMe`,
                 value={
                   socialForm.handle
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setSocialForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...socialForm,
                       handle:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="@brandname"
@@ -3713,15 +3239,13 @@ Dev|withMe`,
                 value={
                   socialForm.url
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setSocialForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      url: event.target
+                    {
+                      ...socialForm,
+                      url: e.target
                         .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="https://"
@@ -3731,7 +3255,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setSocialOpen(
@@ -3743,7 +3266,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 saveSocial
               }
@@ -3755,9 +3277,7 @@ Dev|withMe`,
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-         BRAND DIALOG
-      ====================================================== */}
+      {/* BRAND DIALOG */}
 
       <BrandDialog
         open={brandOpen}
@@ -3775,9 +3295,7 @@ Dev|withMe`,
         }}
       />
 
-      {/* ======================================================
-         NOTE DIALOG
-      ====================================================== */}
+      {/* NOTE DIALOG */}
 
       <Dialog
         open={noteOpen}
@@ -3804,16 +3322,14 @@ Dev|withMe`,
                 value={
                   noteForm.subject
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setNoteForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...noteForm,
                       subject:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="Meeting Notes"
@@ -3829,16 +3345,14 @@ Dev|withMe`,
                 value={
                   noteForm.body
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setNoteForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...noteForm,
                       body:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 rows={7}
@@ -3850,7 +3364,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setNoteOpen(
@@ -3862,7 +3375,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 saveNote
               }
@@ -3874,9 +3386,7 @@ Dev|withMe`,
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-         PROGRESS DIALOG
-      ====================================================== */}
+      {/* PROGRESS DIALOG */}
 
       <Dialog
         open={progressOpen}
@@ -3902,15 +3412,13 @@ Dev|withMe`,
                 value={
                   progressForm.date
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setProgressForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      date: event.target
+                    {
+                      ...progressForm,
+                      date: e.target
                         .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -3925,16 +3433,14 @@ Dev|withMe`,
                 value={
                   progressForm.project
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setProgressForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...progressForm,
                       project:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="ABC Website"
@@ -3950,16 +3456,14 @@ Dev|withMe`,
                 value={
                   progressForm.progress
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setProgressForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...progressForm,
                       progress:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 rows={5}
@@ -3971,7 +3475,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setProgressOpen(
@@ -3983,7 +3486,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 saveProgressEntry
               }
@@ -3995,9 +3497,7 @@ Dev|withMe`,
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-         FILE DIALOG
-      ====================================================== */}
+      {/* FILE DIALOG */}
 
       <Dialog
         open={fileOpen}
@@ -4022,15 +3522,13 @@ Dev|withMe`,
                 value={
                   fileForm.name
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setFileForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      name: event.target
+                    {
+                      ...fileForm,
+                      name: e.target
                         .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="Brand Guidelines.pdf"
@@ -4046,16 +3544,14 @@ Dev|withMe`,
                 value={
                   fileForm.title
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setFileForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...fileForm,
                       title:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 placeholder="Brand Guidelines"
@@ -4071,16 +3567,14 @@ Dev|withMe`,
                 value={
                   fileForm.summary
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setFileForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...fileForm,
                       summary:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
                 rows={4}
@@ -4101,7 +3595,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setFileOpen(
@@ -4113,7 +3606,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 saveFile
               }
@@ -4125,9 +3617,7 @@ Dev|withMe`,
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-         INVOICE DIALOG
-      ====================================================== */}
+      {/* INVOICE DIALOG */}
 
       <Dialog
         open={invoiceOpen}
@@ -4154,16 +3644,14 @@ Dev|withMe`,
                 value={
                   invoiceForm.invoiceNumber
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...invoiceForm,
                       invoiceNumber:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -4178,16 +3666,14 @@ Dev|withMe`,
                 value={
                   invoiceForm.service
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...invoiceForm,
                       service:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -4203,16 +3689,14 @@ Dev|withMe`,
                 value={
                   invoiceForm.amount
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...invoiceForm,
                       amount:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -4231,13 +3715,11 @@ Dev|withMe`,
                   value,
                 ) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...invoiceForm,
                       status:
                         value,
-                    }),
+                    },
                   )
                 }
               >
@@ -4274,15 +3756,13 @@ Dev|withMe`,
                 value={
                   invoiceForm.date
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      date: event.target
+                    {
+                      ...invoiceForm,
+                      date: e.target
                         .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -4298,16 +3778,14 @@ Dev|withMe`,
                 value={
                   invoiceForm.dueDate
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setInvoiceForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
+                    {
+                      ...invoiceForm,
                       dueDate:
-                        event.target
+                        e.target
                           .value,
-                    }),
+                    },
                   )
                 }
               />
@@ -4316,7 +3794,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setInvoiceOpen(
@@ -4328,7 +3805,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 saveInvoice
               }
@@ -4340,9 +3816,7 @@ Dev|withMe`,
         </DialogContent>
       </Dialog>
 
-      {/* ======================================================
-         EMAIL DIALOG
-      ====================================================== */}
+      {/* EMAIL DIALOG */}
 
       <Dialog
         open={emailOpen}
@@ -4381,9 +3855,9 @@ Dev|withMe`,
                 value={
                   emailSubject
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setEmailSubject(
-                    event.target
+                    e.target
                       .value,
                   )
                 }
@@ -4400,9 +3874,9 @@ Dev|withMe`,
                 value={
                   emailMessage
                 }
-                onChange={(event) =>
+                onChange={(e) =>
                   setEmailMessage(
-                    event.target
+                    e.target
                       .value,
                   )
                 }
@@ -4415,7 +3889,6 @@ Dev|withMe`,
 
           <DialogFooter>
             <Button
-              type="button"
               variant="outline"
               onClick={() =>
                 setEmailOpen(
@@ -4427,7 +3900,6 @@ Dev|withMe`,
             </Button>
 
             <Button
-              type="button"
               onClick={
                 handleSendEmail
               }
@@ -4502,17 +3974,14 @@ function BrandDialog({
     setNotes(
       brand.notes,
     );
-  }, [
-    brand,
-    open,
-  ]);
+  }, [brand, open]);
 
   function handleSave() {
     const parsedColors =
       colors
         .split(',')
-        .map((color) =>
-          color.trim(),
+        .map((c) =>
+          c.trim(),
         )
         .filter(Boolean);
 
@@ -4546,10 +4015,9 @@ function BrandDialog({
 
             <Input
               value={colors}
-              onChange={(event) =>
+              onChange={(e) =>
                 setColors(
-                  event.target
-                    .value,
+                  e.target.value,
                 )
               }
               placeholder="#111111, #FFFFFF, #FF6600"
@@ -4570,10 +4038,9 @@ function BrandDialog({
               value={
                 typography
               }
-              onChange={(event) =>
+              onChange={(e) =>
                 setTypography(
-                  event.target
-                    .value,
+                  e.target.value,
                 )
               }
               placeholder="Inter / Playfair Display"
@@ -4587,10 +4054,9 @@ function BrandDialog({
 
             <textarea
               value={notes}
-              onChange={(event) =>
+              onChange={(e) =>
                 setNotes(
-                  event.target
-                    .value,
+                  e.target.value,
                 )
               }
               rows={5}
@@ -4602,7 +4068,6 @@ function BrandDialog({
 
         <DialogFooter>
           <Button
-            type="button"
             variant="outline"
             onClick={() =>
               onOpenChange(
@@ -4614,7 +4079,6 @@ function BrandDialog({
           </Button>
 
           <Button
-            type="button"
             onClick={
               handleSave
             }
@@ -4652,7 +4116,7 @@ function ClientDialog({
   >;
   submitting: boolean;
   onSubmit: (
-    event: React.FormEvent,
+    e: React.FormEvent,
   ) => void;
 }) {
   return (
@@ -4684,17 +4148,12 @@ function ClientDialog({
               <Input
                 id="client-name"
                 value={form.name}
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      name: event
-                        .target
-                        .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    name: e.target
+                      .value,
+                  })
                 }
                 required
               />
@@ -4710,18 +4169,13 @@ function ClientDialog({
                 value={
                   form.company
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      company:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    company:
+                      e.target
+                        .value,
+                  })
                 }
                 required
               />
@@ -4738,17 +4192,12 @@ function ClientDialog({
                 value={
                   form.email
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      email:
-                        event.target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    email: e.target
+                      .value,
+                  })
                 }
                 required
               />
@@ -4764,17 +4213,12 @@ function ClientDialog({
                 value={
                   form.phone
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      phone:
-                        event.target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    phone: e.target
+                      .value,
+                  })
                 }
               />
             </div>
@@ -4791,15 +4235,11 @@ function ClientDialog({
                 onValueChange={(
                   value,
                 ) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      servicePackage:
-                        value,
-                    }),
-                  )
+                  setForm({
+                    ...form,
+                    servicePackage:
+                      value,
+                  })
                 }
               >
                 <SelectTrigger>
@@ -4833,15 +4273,11 @@ function ClientDialog({
                 onValueChange={(
                   value,
                 ) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      status:
-                        value as ClientStatus,
-                    }),
-                  )
+                  setForm({
+                    ...form,
+                    status:
+                      value as ClientStatus,
+                  })
                 }
               >
                 <SelectTrigger>
@@ -4875,22 +4311,16 @@ function ClientDialog({
               <Input
                 id="client-retainer"
                 type="number"
-                min="0"
                 value={
                   form.monthlyRetainer
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      monthlyRetainer:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    monthlyRetainer:
+                      e.target
+                        .value,
+                  })
                 }
               />
             </div>
@@ -4905,18 +4335,13 @@ function ClientDialog({
                 value={
                   form.accountManager
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      accountManager:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    accountManager:
+                      e.target
+                        .value,
+                  })
                 }
               />
             </div>
@@ -4931,18 +4356,13 @@ function ClientDialog({
                 value={
                   form.industry
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      industry:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    industry:
+                      e.target
+                        .value,
+                  })
                 }
               />
             </div>
@@ -4958,18 +4378,13 @@ function ClientDialog({
                 value={
                   form.startDate
                 }
-                onChange={(event) =>
-                  setForm(
-                    (
-                      current,
-                    ) => ({
-                      ...current,
-                      startDate:
-                        event
-                          .target
-                          .value,
-                    }),
-                  )
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    startDate:
+                      e.target
+                        .value,
+                  })
                 }
               />
             </div>
