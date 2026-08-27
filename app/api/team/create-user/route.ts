@@ -18,7 +18,7 @@ type CreateUserBody = {
    HELPERS
 ============================================================ */
 
-function errorResponse(
+function jsonError(
   message: string,
   status: number,
 ) {
@@ -27,14 +27,20 @@ function errorResponse(
       success: false,
       error: message,
     },
-    {
-      status,
-    },
+    { status },
   );
 }
 
+function normalizeEmail(
+  value: unknown,
+) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
+}
+
 /* ============================================================
-   POST /api/team/create-user
+   POST
 ============================================================ */
 
 export async function POST(
@@ -46,7 +52,7 @@ export async function POST(
 
   try {
     /* ========================================================
-       1. VERIFY CURRENT SESSION
+       1. VERIFY CURRENT LOGIN
     ======================================================== */
 
     const supabase =
@@ -56,62 +62,59 @@ export async function POST(
       data: {
         user,
       },
-      error: userError,
+      error: authCheckError,
     } =
       await supabase.auth.getUser();
 
-    if (userError) {
-      console.error(
-        'Failed to verify current user:',
-        userError,
-      );
-
-      return errorResponse(
-        'Unable to verify your current session.',
+    if (
+      authCheckError ||
+      !user
+    ) {
+      return jsonError(
+        'You must be signed in before creating a team account.',
         401,
       );
     }
 
-    if (!user) {
-      return errorResponse(
-        'You must be signed in as an administrator to create team accounts.',
-        401,
+    const currentUserEmail =
+      normalizeEmail(
+        user.email,
       );
-    }
 
     /* ========================================================
        2. VERIFY ADMIN
     ======================================================== */
+
+    /*
+     * ADMIN_EMAILS should contain the email(s) that are allowed
+     * to create team accounts.
+     *
+     * Example:
+     *
+     * ADMIN_EMAILS=admin@example.com
+     *
+     * Multiple:
+     *
+     * ADMIN_EMAILS=admin@example.com,owner@example.com
+     */
 
     const adminEmails =
       String(
         process.env.ADMIN_EMAILS ?? '',
       )
         .split(',')
-        .map((email) =>
-          email
-            .trim()
-            .toLowerCase(),
-        )
+        .map(normalizeEmail)
         .filter(Boolean);
 
-    const currentUserEmail =
-      String(
-        user.email ?? '',
-      )
-        .trim()
-        .toLowerCase();
-
     if (
-      adminEmails.length ===
-      0
+      adminEmails.length === 0
     ) {
       console.error(
-        'ADMIN_EMAILS is missing.',
+        'ADMIN_EMAILS is not configured.',
       );
 
-      return errorResponse(
-        'Server administrator configuration is missing.',
+      return jsonError(
+        'ADMIN_EMAILS is not configured on the server. Add your administrator email to Vercel Environment Variables and redeploy.',
         500,
       );
     }
@@ -129,14 +132,14 @@ export async function POST(
         },
       );
 
-      return errorResponse(
-        'Only authorized administrators can create team accounts.',
+      return jsonError(
+        'Your account is not authorized to create team accounts.',
         403,
       );
     }
 
     /* ========================================================
-       3. READ BODY
+       3. READ REQUEST BODY
     ======================================================== */
 
     let body: CreateUserBody;
@@ -145,14 +148,14 @@ export async function POST(
       body =
         (await request.json()) as CreateUserBody;
     } catch {
-      return errorResponse(
+      return jsonError(
         'Invalid request body.',
         400,
       );
     }
 
     /* ========================================================
-       4. NORMALIZE VALUES
+       4. NORMALIZE INPUT
     ======================================================== */
 
     const name =
@@ -161,11 +164,9 @@ export async function POST(
       ).trim();
 
     const email =
-      String(
-        body.email ?? '',
-      )
-        .trim()
-        .toLowerCase();
+      normalizeEmail(
+        body.email,
+      );
 
     const password =
       String(
@@ -227,33 +228,32 @@ export async function POST(
     ======================================================== */
 
     if (!name) {
-      return errorResponse(
+      return jsonError(
         'Name is required.',
         400,
       );
     }
 
     if (!email) {
-      return errorResponse(
+      return jsonError(
         'Email is required.',
         400,
       );
     }
 
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
     if (
-      !emailPattern.test(email)
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        email,
+      )
     ) {
-      return errorResponse(
-        'Please provide a valid email address.',
+      return jsonError(
+        'Please enter a valid email address.',
         400,
       );
     }
 
     if (!password) {
-      return errorResponse(
+      return jsonError(
         'Password is required.',
         400,
       );
@@ -262,22 +262,15 @@ export async function POST(
     if (
       password.length < 8
     ) {
-      return errorResponse(
+      return jsonError(
         'Password must contain at least 8 characters.',
         400,
       );
     }
 
     if (!role) {
-      return errorResponse(
+      return jsonError(
         'Role is required.',
-        400,
-      );
-    }
-
-    if (!availability) {
-      return errorResponse(
-        'Availability is required.',
         400,
       );
     }
@@ -287,67 +280,57 @@ export async function POST(
     ======================================================== */
 
     /*
-     * IMPORTANT:
+     * This uses the Supabase SERVICE ROLE key.
      *
-     * The admin client is created HERE, at request time.
-     *
-     * This prevents Vercel/Next.js build-time evaluation from
-     * throwing an environment-variable error.
+     * It is SERVER ONLY.
      */
     const supabaseAdmin =
       createSupabaseAdmin();
 
     /* ========================================================
-       7. CHECK DUPLICATE AUTH ACCOUNT
+       7. CHECK WHETHER EMAIL ALREADY EXISTS
     ======================================================== */
 
-    try {
-      const {
-        data: usersData,
-        error: usersError,
-      } =
-        await supabaseAdmin.auth.admin.listUsers(
-          {
-            page: 1,
-            perPage: 1000,
-          },
-        );
+    const {
+      data: usersData,
+      error: usersError,
+    } =
+      await supabaseAdmin.auth.admin.listUsers(
+        {
+          page: 1,
+          perPage: 1000,
+        },
+      );
 
-      if (!usersError) {
-        const existingUser =
-          usersData.users.find(
-            (existingUser) =>
-              String(
-                existingUser.email ??
-                  '',
-              )
-                .trim()
-                .toLowerCase() ===
-              email,
-          );
+    if (usersError) {
+      console.error(
+        'Could not check existing users:',
+        usersError,
+      );
 
-        if (existingUser) {
-          return errorResponse(
-            'An account with this email already exists.',
-            409,
-          );
-        }
-      }
-    } catch (
-      duplicateCheckError
-    ) {
-      /*
-       * Duplicate detection is only a convenience check.
-       * Supabase Auth will still reject duplicate emails.
-       */
-      console.warn(
-        'Could not complete duplicate email check:',
-        duplicateCheckError,
+      return jsonError(
+        'Unable to verify whether this email already exists.',
+        500,
+      );
+    }
+
+    const existingAuthUser =
+      usersData.users.find(
+        (existingUser) =>
+          normalizeEmail(
+            existingUser.email,
+          ) === email,
+      );
+
+    if (existingAuthUser) {
+      return jsonError(
+        'An authentication account with this email already exists.',
+        409,
       );
     }
 
     /* ========================================================
-       8. CREATE SUPABASE AUTH ACCOUNT
+       8. CREATE AUTH ACCOUNT
     ======================================================== */
 
     const {
@@ -360,10 +343,14 @@ export async function POST(
           password,
 
           /*
-           * Admin-created users can sign in immediately.
+           * User can log in immediately.
            */
           email_confirm: true,
 
+          /*
+           * Store useful profile information in
+           * Supabase Auth metadata.
+           */
           user_metadata: {
             full_name: name,
             role,
@@ -373,7 +360,7 @@ export async function POST(
 
     if (authError) {
       console.error(
-        'Supabase Auth createUser failed:',
+        'Failed to create Supabase Auth user:',
         {
           message:
             authError.message,
@@ -384,9 +371,9 @@ export async function POST(
         },
       );
 
-      return errorResponse(
+      return jsonError(
         authError.message ||
-          'Failed to create the authentication account.',
+          'Failed to create authentication account.',
         400,
       );
     }
@@ -394,8 +381,8 @@ export async function POST(
     if (
       !authData.user
     ) {
-      return errorResponse(
-        'Supabase did not return the created user.',
+      return jsonError(
+        'Supabase did not return the new authentication user.',
         500,
       );
     }
@@ -404,12 +391,14 @@ export async function POST(
       authData.user.id;
 
     /* ========================================================
-       9. CREATE TEAM MEMBER RECORD
+       9. CREATE TEAM MEMBER
     ======================================================== */
 
     /*
-     * Explicit Record<string, unknown> prevents the
-     * `never[]` TypeScript inference problem.
+     * Explicitly type this as a record.
+     *
+     * This prevents the TypeScript `never[]` problem that
+     * previously appeared in your build.
      */
     const teamMemberPayload:
       Record<
@@ -429,23 +418,6 @@ export async function POST(
       utilization,
     };
 
-    console.log(
-      'Creating team member:',
-      {
-        name,
-        role,
-        email,
-        active_projects:
-          activeProjects,
-        tasks_assigned:
-          tasksAssigned,
-        tasks_completed:
-          tasksCompleted,
-        availability,
-        utilization,
-      },
-    );
-
     const {
       data: member,
       error: memberError,
@@ -460,7 +432,7 @@ export async function POST(
 
     if (memberError) {
       console.error(
-        'Failed to create team member:',
+        'Failed to create team_members row:',
         {
           message:
             memberError.message,
@@ -474,7 +446,7 @@ export async function POST(
       );
 
       /* ======================================================
-         10. ROLLBACK AUTH ACCOUNT
+         ROLLBACK AUTH ACCOUNT
       ====================================================== */
 
       try {
@@ -493,15 +465,15 @@ export async function POST(
         );
       }
 
-      return errorResponse(
+      return jsonError(
         memberError.message ||
-          'Failed to create the team member record.',
+          'Failed to create team member record.',
         400,
       );
     }
 
     /* ========================================================
-       11. SUCCESS
+       10. SUCCESS
     ======================================================== */
 
     createdAuthUserId =
@@ -510,8 +482,13 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
+
+        message:
+          'Team account created successfully.',
+
         userId:
           authData.user.id,
+
         member,
       },
       {
@@ -525,16 +502,13 @@ export async function POST(
     );
 
     /* ========================================================
-       12. FINAL ROLLBACK
+       FINAL AUTH ROLLBACK
     ======================================================== */
 
     if (
       createdAuthUserId
     ) {
       try {
-        /*
-         * Recreate admin client only if necessary.
-         */
         const supabaseAdmin =
           createSupabaseAdmin();
 
@@ -545,13 +519,13 @@ export async function POST(
         rollbackError
       ) {
         console.error(
-          'Final Auth rollback failed:',
+          'Final rollback failed:',
           rollbackError,
         );
       }
     }
 
-    return errorResponse(
+    return jsonError(
       error?.message ||
         'Failed to create team account.',
       500,

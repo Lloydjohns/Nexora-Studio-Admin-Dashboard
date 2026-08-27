@@ -3,14 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 /*
  * SERVER-ONLY SUPABASE ADMIN CLIENT
  *
- * IMPORTANT:
- * - This file must only be used by server code.
- * - Never import it into a client component.
- * - SUPABASE_SERVICE_ROLE_KEY must never be exposed to the browser.
+ * Never import this file into a client component.
  *
- * Environment variables are checked inside the function rather than
- * during module import. This prevents Next.js from failing during
- * build-time page/API route collection.
+ * The service-role key must NEVER use NEXT_PUBLIC_.
  */
 
 export function createSupabaseAdmin() {
