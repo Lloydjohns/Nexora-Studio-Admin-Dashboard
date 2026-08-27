@@ -621,13 +621,21 @@ export default function ClientsPage() {
   ========================================================== */
 
   function openAdd() {
-    /*
-     * The Clients page should no longer
-     * create a new client.
-     *
-     * Instead, send the user to Projects.
-     */
     router.push('/projects');
+  }
+
+  function openNewProject(client: any) {
+    if (!client?.id) {
+      router.push('/projects');
+      return;
+    }
+
+    const params = new URLSearchParams({
+      clientId: String(client.id),
+      client: safeString(client.company),
+    });
+
+    router.push(`/projects?${params.toString()}`);
   }
 
   /* ==========================================================
@@ -1023,47 +1031,58 @@ export default function ClientsPage() {
 
           <Input
             placeholder="Search clients by name, company or email..."
-            className="pl-9"
+            className="pl-9 pr-20"
             value={search}
-            onChange={(event) =>
-              setSearch(
-                event.target.value,
-              )
-            }
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setSearch('');
+            }}
             type="search"
             autoComplete="off"
           />
+
+          {search && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-1 top-1/2 h-7 -translate-y-1/2 px-2 text-xs"
+              onClick={() => setSearch('')}
+            >
+              Clear
+            </Button>
+          )}
         </div>
 
-        <Select
-          value={statusFilter}
-          onValueChange={
-            setStatusFilter
-          }
-        >
-          <SelectTrigger className="w-full sm:w-40">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-44">
             <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
-
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
 
           <SelectContent>
-            <SelectItem value="all">
-              All statuses
-            </SelectItem>
-
-            {statusOptions.map(
-              (status) => (
-                <SelectItem
-                  key={status}
-                  value={status}
-                >
-                  {status}
-                </SelectItem>
-              ),
-            )}
+            <SelectItem value="all">All statuses</SelectItem>
+            {statusOptions.map((status) => (
+              <SelectItem key={status} value={status}>
+                {status}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+
+        {(search || statusFilter !== 'all') && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('all');
+            }}
+          >
+            Reset
+          </Button>
+        )}
       </div>
 
       {/* ======================================================
@@ -1105,6 +1124,10 @@ export default function ClientsPage() {
               <TableHead>
                 Last Activity
               </TableHead>
+
+              <TableHead className="text-right">
+                Actions
+              </TableHead>
             </TableRow>
           </TableHeader>
 
@@ -1117,7 +1140,7 @@ export default function ClientsPage() {
                   key={`loading-${index}`}
                 >
                   {Array.from({
-                    length: 8,
+                    length: 9,
                   }).map(
                     (
                       __,
@@ -1251,13 +1274,49 @@ export default function ClientsPage() {
                         client.lastActivity,
                       ) || '—'}
                     </TableCell>
+
+                    <TableCell
+                      className="text-right"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Edit ${safeString(client.name)}`}
+                          title="Edit client"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(client.id);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Delete ${safeString(client.name)}`}
+                          title="Delete client"
+                          className="text-destructive hover:text-destructive"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(client.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ),
               )
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-12 text-center"
                 >
                   <div className="text-sm text-muted-foreground">
@@ -2390,15 +2449,7 @@ Dev|withMe`,
               <Button
                 type="button"
                 size="sm"
-                onClick={() =>
-                  router.push(
-                    `/projects?clientId=${encodeURIComponent(
-                      client.id,
-                    )}&client=${encodeURIComponent(
-                      client.company,
-                    )}`,
-                  )
-                }
+                onClick={() => openNewProject(client)}
               >
                 <Plus className="mr-1.5 h-4 w-4" />
                 New Project
@@ -2802,15 +2853,7 @@ Dev|withMe`,
             <Button
               type="button"
               size="sm"
-              onClick={() =>
-                router.push(
-                  `/projects?clientId=${encodeURIComponent(
-                    client.id,
-                  )}&client=${encodeURIComponent(
-                    client.company,
-                  )}`,
-                )
-              }
+              onClick={() => openNewProject(client)}
             >
               <Plus className="mr-1.5 h-4 w-4" />
               New Project
