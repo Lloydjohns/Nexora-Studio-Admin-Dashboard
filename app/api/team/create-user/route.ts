@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
 type CreateUserBody = {
   name: string;
@@ -34,7 +34,7 @@ function errorResponse(
 }
 
 /* ============================================================
-   CREATE TEAM ACCOUNT
+   POST /api/team/create-user
 ============================================================ */
 
 export async function POST(
@@ -46,7 +46,7 @@ export async function POST(
 
   try {
     /* ========================================================
-       1. VERIFY CURRENTLY LOGGED-IN USER
+       1. VERIFY CURRENT SESSION
     ======================================================== */
 
     const supabase =
@@ -62,7 +62,7 @@ export async function POST(
 
     if (userError) {
       console.error(
-        'Failed to get current user:',
+        'Failed to verify current user:',
         userError,
       );
 
@@ -80,7 +80,7 @@ export async function POST(
     }
 
     /* ========================================================
-       2. VERIFY ADMINISTRATOR
+       2. VERIFY ADMIN
     ======================================================== */
 
     const adminEmails =
@@ -102,19 +102,12 @@ export async function POST(
         .trim()
         .toLowerCase();
 
-    /*
-     * ADMIN_EMAILS must be configured.
-     *
-     * Example:
-     *
-     * ADMIN_EMAILS=admin@nexorastudio.ph,owner@nexorastudio.ph
-     */
     if (
       adminEmails.length ===
       0
     ) {
       console.error(
-        'ADMIN_EMAILS is missing or empty.',
+        'ADMIN_EMAILS is missing.',
       );
 
       return errorResponse(
@@ -124,7 +117,6 @@ export async function POST(
     }
 
     if (
-      !currentUserEmail ||
       !adminEmails.includes(
         currentUserEmail,
       )
@@ -144,11 +136,10 @@ export async function POST(
     }
 
     /* ========================================================
-       3. READ REQUEST BODY
+       3. READ BODY
     ======================================================== */
 
-    let body:
-      | CreateUserBody;
+    let body: CreateUserBody;
 
     try {
       body =
@@ -161,7 +152,7 @@ export async function POST(
     }
 
     /* ========================================================
-       4. CLEAN INPUT
+       4. NORMALIZE VALUES
     ======================================================== */
 
     const name =
@@ -232,7 +223,7 @@ export async function POST(
       );
 
     /* ========================================================
-       5. VALIDATION
+       5. VALIDATE
     ======================================================== */
 
     if (!name) {
@@ -253,9 +244,7 @@ export async function POST(
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (
-      !emailPattern.test(
-        email,
-      )
+      !emailPattern.test(email)
     ) {
       return errorResponse(
         'Please provide a valid email address.',
@@ -286,8 +275,30 @@ export async function POST(
       );
     }
 
+    if (!availability) {
+      return errorResponse(
+        'Availability is required.',
+        400,
+      );
+    }
+
     /* ========================================================
-       6. CHECK WHETHER AUTH USER ALREADY EXISTS
+       6. CREATE SERVER ADMIN CLIENT
+    ======================================================== */
+
+    /*
+     * IMPORTANT:
+     *
+     * The admin client is created HERE, at request time.
+     *
+     * This prevents Vercel/Next.js build-time evaluation from
+     * throwing an environment-variable error.
+     */
+    const supabaseAdmin =
+      createSupabaseAdmin();
+
+    /* ========================================================
+       7. CHECK DUPLICATE AUTH ACCOUNT
     ======================================================== */
 
     try {
@@ -322,21 +333,21 @@ export async function POST(
           );
         }
       }
-    } catch (error) {
+    } catch (
+      duplicateCheckError
+    ) {
       /*
        * Duplicate detection is only a convenience check.
-       *
-       * Supabase Auth will still reject duplicate emails if the
-       * account exists.
+       * Supabase Auth will still reject duplicate emails.
        */
       console.warn(
         'Could not complete duplicate email check:',
-        error,
+        duplicateCheckError,
       );
     }
 
     /* ========================================================
-       7. CREATE SUPABASE AUTH USER
+       8. CREATE SUPABASE AUTH ACCOUNT
     ======================================================== */
 
     const {
@@ -349,7 +360,7 @@ export async function POST(
           password,
 
           /*
-           * Admin-created team accounts can log in immediately.
+           * Admin-created users can sign in immediately.
            */
           email_confirm: true,
 
@@ -393,15 +404,12 @@ export async function POST(
       authData.user.id;
 
     /* ========================================================
-       8. CREATE TEAM MEMBERS RECORD
+       9. CREATE TEAM MEMBER RECORD
     ======================================================== */
 
     /*
-     * Keep this payload as a separate object.
-     *
-     * The cast prevents TypeScript from incorrectly inferring
-     * the Supabase insert argument as `never[]` when database
-     * generated types are not installed.
+     * Explicit Record<string, unknown> prevents the
+     * `never[]` TypeScript inference problem.
      */
     const teamMemberPayload:
       Record<
@@ -424,10 +432,17 @@ export async function POST(
     console.log(
       'Creating team member:',
       {
-        ...teamMemberPayload,
-        /*
-         * Never log the password.
-         */
+        name,
+        role,
+        email,
+        active_projects:
+          activeProjects,
+        tasks_assigned:
+          tasksAssigned,
+        tasks_completed:
+          tasksCompleted,
+        availability,
+        utilization,
       },
     );
 
@@ -445,7 +460,7 @@ export async function POST(
 
     if (memberError) {
       console.error(
-        'Failed to create team_members record:',
+        'Failed to create team member:',
         {
           message:
             memberError.message,
@@ -459,7 +474,7 @@ export async function POST(
       );
 
       /* ======================================================
-         9. ROLLBACK AUTH USER
+         10. ROLLBACK AUTH ACCOUNT
       ====================================================== */
 
       try {
@@ -473,7 +488,7 @@ export async function POST(
         rollbackError
       ) {
         console.error(
-          'Failed to rollback Auth user:',
+          'Failed to rollback Auth account:',
           rollbackError,
         );
       }
@@ -486,7 +501,7 @@ export async function POST(
     }
 
     /* ========================================================
-       10. SUCCESS
+       11. SUCCESS
     ======================================================== */
 
     createdAuthUserId =
@@ -495,10 +510,8 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-
         userId:
           authData.user.id,
-
         member,
       },
       {
@@ -512,13 +525,19 @@ export async function POST(
     );
 
     /* ========================================================
-       11. FINAL ROLLBACK
+       12. FINAL ROLLBACK
     ======================================================== */
 
     if (
       createdAuthUserId
     ) {
       try {
+        /*
+         * Recreate admin client only if necessary.
+         */
+        const supabaseAdmin =
+          createSupabaseAdmin();
+
         await supabaseAdmin.auth.admin.deleteUser(
           createdAuthUserId,
         );
