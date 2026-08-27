@@ -10,7 +10,6 @@ import {
   Phone,
   ArrowLeft,
   Building2,
-  Calendar,
   Palette,
   Instagram,
   Facebook,
@@ -27,15 +26,10 @@ import {
   Trash2,
   Pencil,
   Save,
-  X,
   Send,
   Upload,
   Globe,
   Linkedin,
-  MoreHorizontal,
-  CheckCircle2,
-  Clock,
-  Download,
   ExternalLink,
 } from 'lucide-react';
 
@@ -372,73 +366,97 @@ export default function ClientsPage() {
     (client) => client.status === 'Active',
   );
 
-  const activeRetainersTotal = activeClients.reduce(
-    (total, client) =>
-      total + (Number(client.monthlyRetainer) || 0),
-    0,
-  );
+  const activeRetainersTotal =
+    activeClients.reduce(
+      (total, client) =>
+        total +
+        (Number(
+          client.monthlyRetainer,
+        ) || 0),
+      0,
+    );
 
   const averageRetainer =
     activeClients.length > 0
-      ? activeRetainersTotal / activeClients.length
+      ? activeRetainersTotal /
+        activeClients.length
       : 0;
 
   function formatKpiPeso(amount: number) {
     if (amount >= 1_000_000) {
-      return `₱${(amount / 1_000_000).toFixed(1)}M`;
+      return `₱${(
+        amount / 1_000_000
+      ).toFixed(1)}M`;
     }
 
     if (amount >= 1_000) {
-      return `₱${Math.round(amount / 1_000)}K`;
+      return `₱${Math.round(
+        amount / 1_000,
+      )}K`;
     }
 
-    return `₱${Math.round(amount).toLocaleString()}`;
+    return `₱${Math.round(
+      amount,
+    ).toLocaleString()}`;
   }
 
-  const filtered = allClients.filter(
-    (c) => {
-      const query =
-        search.toLowerCase().trim();
+  const filtered =
+    allClients.filter(
+      (c) => {
+        const query =
+          search
+            .toLowerCase()
+            .trim();
 
-      const matchesSearch =
-        !query ||
-        c.name
-          .toLowerCase()
-          .includes(query) ||
-        c.company
-          .toLowerCase()
-          .includes(query) ||
-        c.email
-          .toLowerCase()
-          .includes(query);
+        const matchesSearch =
+          !query ||
+          c.name
+            .toLowerCase()
+            .includes(query) ||
+          c.company
+            .toLowerCase()
+            .includes(query) ||
+          c.email
+            .toLowerCase()
+            .includes(query);
 
-      const matchesStatus =
-        statusFilter === 'all' ||
-        c.status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'all' ||
+          c.status ===
+            statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesStatus
-      );
-    },
-  );
+        return (
+          matchesSearch &&
+          matchesStatus
+        );
+      },
+    );
 
   const selectedClient =
     allClients.find(
-      (c) => c.id === selected,
+      (c) =>
+        c.id === selected,
     );
 
   /*
-   * Projects are currently displayed by client company.
-   * This is kept for compatibility with your existing API/data model.
-   * Once every project has client_id, you can switch this to:
-   * p.client_id === selectedClient?.id
+   * Prefer client_id when available.
+   * Keep the company-name fallback so existing projects
+   * created before this revision still appear.
    */
   const clientProjects =
     allProjects.filter(
-      (p) =>
-        p.client ===
-        selectedClient?.company,
+      (p: any) => {
+        if (!selectedClient)
+          return false;
+
+        return (
+          p.client_id ===
+            selectedClient.id ||
+          (!p.client_id &&
+            p.client ===
+              selectedClient.company)
+        );
+      },
     );
 
   const clientContent =
@@ -496,32 +514,17 @@ export default function ClientsPage() {
         c.servicePackage,
       status: c.status,
       monthlyRetainer:
-        String(c.monthlyRetainer),
+        String(
+          c.monthlyRetainer,
+        ),
       accountManager:
         c.accountManager,
-      industry:
-        c.industry,
+      industry: c.industry,
       startDate:
         c.startDate,
     });
 
     setOpen(true);
-  }
-
-  /* ==========================================================
-     OPEN PROJECT CREATION FOR CLIENT
-  ========================================================== */
-
-  function openClientProject() {
-    if (!selectedClient) return;
-
-    router.push(
-      `/projects?clientId=${encodeURIComponent(
-        selectedClient.id,
-      )}&client=${encodeURIComponent(
-        selectedClient.company,
-      )}`,
-    );
   }
 
   /* ==========================================================
@@ -552,7 +555,8 @@ export default function ClientsPage() {
     try {
       const payload = {
         name: form.name.trim(),
-        company: form.company.trim(),
+        company:
+          form.company.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
         service_package:
@@ -704,8 +708,6 @@ export default function ClientsPage() {
         </Button>
       </PageHeader>
 
-      {/* KPIs */}
-
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
           label="Total Clients"
@@ -757,8 +759,6 @@ export default function ClientsPage() {
         />
       </div>
 
-      {/* SEARCH / FILTER */}
-
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -805,8 +805,6 @@ export default function ClientsPage() {
         </Select>
       </div>
 
-      {/* CLIENT TABLE */}
-
       <Card className="mt-4 overflow-hidden">
         <Table>
           <TableHeader>
@@ -814,31 +812,24 @@ export default function ClientsPage() {
               <TableHead>
                 Client
               </TableHead>
-
               <TableHead>
                 Company
               </TableHead>
-
               <TableHead>
                 Package
               </TableHead>
-
               <TableHead>
                 Status
               </TableHead>
-
               <TableHead className="text-right">
                 Retainer
               </TableHead>
-
               <TableHead>
                 Account Mgr
               </TableHead>
-
               <TableHead>
                 Next Meeting
               </TableHead>
-
               <TableHead>
                 Last Activity
               </TableHead>
@@ -972,7 +963,8 @@ export default function ClientsPage() {
           </TableBody>
         </Table>
 
-        {filtered.length === 0 &&
+        {filtered.length ===
+          0 &&
           !loading && (
             <div className="py-12 text-center text-sm text-muted-foreground">
               No clients match
@@ -1018,9 +1010,7 @@ function ClientWorkspace({
   onEdit: () => void;
   onDelete: () => void;
   onRefresh: () => void;
-  router: ReturnType<
-    typeof useRouter
-  >;
+  router: ReturnType<typeof useRouter>;
   children: React.ReactNode;
 }) {
   const [
@@ -1031,8 +1021,20 @@ function ClientWorkspace({
   );
 
   /* ==========================================================
-     LOCAL WORKSPACE DATA
+     IMPORTANT:
+     This function belongs INSIDE ClientWorkspace because
+     the buttons that use it are inside ClientWorkspace.
   ========================================================== */
+
+  function openClientProject() {
+    router.push(
+      `/projects?clientId=${encodeURIComponent(
+        client.id,
+      )}&client=${encodeURIComponent(
+        client.company,
+      )}`,
+    );
+  }
 
   const [
     socials,
@@ -1053,9 +1055,9 @@ function ClientWorkspace({
   const [
     notes,
     setNotes,
-  ] = React.useState<ClientNote[]>(
-    [],
-  );
+  ] = React.useState<
+    ClientNote[]
+  >([]);
 
   const [
     progressEntries,
@@ -1067,9 +1069,9 @@ function ClientWorkspace({
   const [
     files,
     setFiles,
-  ] = React.useState<ClientFile[]>(
-    [],
-  );
+  ] = React.useState<
+    ClientFile[]
+  >([]);
 
   const [
     workspaceInvoices,
@@ -1288,6 +1290,7 @@ function ClientWorkspace({
     value: SocialAccount[],
   ) {
     setSocials(value);
+
     saveStorage(
       client.id,
       'socials',
@@ -1299,6 +1302,7 @@ function ClientWorkspace({
     value: BrandGuideline,
   ) {
     setBrand(value);
+
     saveStorage(
       client.id,
       'brand',
@@ -1310,6 +1314,7 @@ function ClientWorkspace({
     value: ClientNote[],
   ) {
     setNotes(value);
+
     saveStorage(
       client.id,
       'notes',
@@ -1321,6 +1326,7 @@ function ClientWorkspace({
     value: ProgressEntry[],
   ) {
     setProgressEntries(value);
+
     saveStorage(
       client.id,
       'progress',
@@ -1332,6 +1338,7 @@ function ClientWorkspace({
     value: ClientFile[],
   ) {
     setFiles(value);
+
     saveStorage(
       client.id,
       'files',
@@ -1342,7 +1349,10 @@ function ClientWorkspace({
   function saveInvoices(
     value: ClientInvoice[],
   ) {
-    setWorkspaceInvoices(value);
+    setWorkspaceInvoices(
+      value,
+    );
+
     saveStorage(
       client.id,
       'invoices',
@@ -1354,6 +1364,7 @@ function ClientWorkspace({
     value: Communication[],
   ) {
     setCommunications(value);
+
     saveStorage(
       client.id,
       'communications',
@@ -1396,10 +1407,13 @@ function ClientWorkspace({
   }
 
   function saveSocial() {
-    if (!socialForm.handle.trim()) {
+    if (
+      !socialForm.handle.trim()
+    ) {
       toast.error(
         'Social handle is required.',
       );
+
       return;
     }
 
@@ -1494,6 +1508,7 @@ function ClientWorkspace({
       toast.error(
         'Subject and note are required.',
       );
+
       return;
     }
 
@@ -1572,6 +1587,7 @@ function ClientWorkspace({
       toast.error(
         'Progress note is required.',
       );
+
       return;
     }
 
@@ -1619,6 +1635,7 @@ function ClientWorkspace({
       toast.error(
         'File name and title are required.',
       );
+
       return;
     }
 
@@ -1720,28 +1737,30 @@ function ClientWorkspace({
       toast.error(
         'Invoice number and service are required.',
       );
+
       return;
     }
 
-    const invoice: ClientInvoice = {
-      id:
-        invoiceEditId ||
-        crypto.randomUUID(),
-      invoiceNumber:
-        invoiceForm.invoiceNumber,
-      service:
-        invoiceForm.service,
-      amount:
-        Number(
-          invoiceForm.amount,
-        ) || 0,
-      status:
-        invoiceForm.status,
-      date:
-        invoiceForm.date,
-      dueDate:
-        invoiceForm.dueDate,
-    };
+    const invoice: ClientInvoice =
+      {
+        id:
+          invoiceEditId ||
+          crypto.randomUUID(),
+        invoiceNumber:
+          invoiceForm.invoiceNumber,
+        service:
+          invoiceForm.service,
+        amount:
+          Number(
+            invoiceForm.amount,
+          ) || 0,
+        status:
+          invoiceForm.status,
+        date:
+          invoiceForm.date,
+        dueDate:
+          invoiceForm.dueDate,
+      };
 
     if (invoiceEditId) {
       saveInvoices(
@@ -1807,6 +1826,7 @@ Dev|withMe`,
       toast.error(
         'This client does not have an email address.',
       );
+
       return;
     }
 
@@ -1814,6 +1834,7 @@ Dev|withMe`,
       toast.error(
         'Email subject is required.',
       );
+
       return;
     }
 
@@ -1821,6 +1842,7 @@ Dev|withMe`,
       toast.error(
         'Email message is required.',
       );
+
       return;
     }
 
@@ -1903,10 +1925,6 @@ Dev|withMe`,
     }
   }
 
-  /* ==========================================================
-     COMBINED DATA
-  ========================================================== */
-
   const combinedInvoices = [
     ...workspaceInvoices,
     ...clientInvoices.map(
@@ -1939,8 +1957,6 @@ Dev|withMe`,
         <ArrowLeft className="h-4 w-4" />
         Back to clients
       </button>
-
-      {/* CLIENT PROFILE HEADER */}
 
       <Card className="mb-6">
         <CardContent className="p-6">
@@ -2076,8 +2092,6 @@ Dev|withMe`,
         </CardContent>
       </Card>
 
-      {/* TABS */}
-
       <Tabs
         value={activeTab}
         onValueChange={
@@ -2114,15 +2128,11 @@ Dev|withMe`,
           </TabsTrigger>
         </TabsList>
 
-        {/* OVERVIEW */}
-
         <TabsContent
           value="overview"
           className="mt-4"
         >
           <div className="grid gap-4 lg:grid-cols-3">
-            {/* CONTACT */}
-
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -2173,8 +2183,6 @@ Dev|withMe`,
               </CardContent>
             </Card>
 
-            {/* SOCIAL */}
-
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -2196,7 +2204,8 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent className="space-y-3">
-                {socials.length === 0 ? (
+                {socials.length ===
+                0 ? (
                   <div className="rounded-lg border border-dashed p-5 text-center">
                     <Globe className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
 
@@ -2293,8 +2302,6 @@ Dev|withMe`,
               </CardContent>
             </Card>
 
-            {/* BRAND */}
-
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -2316,7 +2323,8 @@ Dev|withMe`,
 
               <CardContent>
                 {brand.colors
-                  .length === 0 ? (
+                  .length ===
+                0 ? (
                   <div className="rounded-lg border border-dashed p-5 text-center">
                     <Palette className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
 
@@ -2414,7 +2422,8 @@ Dev|withMe`,
           </div>
 
           <div className="space-y-3">
-            {clientProjects.length === 0 ? (
+            {clientProjects.length ===
+            0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
                   <FolderKanban className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -2532,7 +2541,8 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent className="space-y-3">
-                {clientContent.length === 0 ? (
+                {clientContent.length ===
+                0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
                     No content scheduled
                     yet.
@@ -2586,7 +2596,8 @@ Dev|withMe`,
               </CardHeader>
 
               <CardContent>
-                {progressEntries.length === 0 ? (
+                {progressEntries.length ===
+                0 ? (
                   <div className="py-8 text-center">
                     <CalendarDays className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
 
@@ -2693,7 +2704,8 @@ Dev|withMe`,
 
           <Card>
             <CardContent className="p-0">
-              {files.length === 0 ? (
+              {files.length ===
+              0 ? (
                 <div className="py-14 text-center">
                   <Paperclip className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
 
@@ -2832,7 +2844,8 @@ Dev|withMe`,
               </TableHeader>
 
               <TableBody>
-                {combinedInvoices.length === 0 ? (
+                {combinedInvoices.length ===
+                0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={6}
@@ -2961,7 +2974,8 @@ Dev|withMe`,
             </Button>
           </div>
 
-          {notes.length === 0 ? (
+          {notes.length ===
+          0 ? (
             <Card>
               <CardContent className="py-14 text-center">
                 <StickyNote className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
@@ -3075,7 +3089,8 @@ Dev|withMe`,
 
           <Card>
             <CardContent className="p-0">
-              {communications.length === 0 ? (
+              {communications.length ===
+              0 ? (
                 <div className="py-14 text-center">
                   <MessageSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
 
@@ -3199,7 +3214,9 @@ Dev|withMe`,
                           platform
                         }
                       >
-                        {platform}
+                        {
+                          platform
+                        }
                       </SelectItem>
                     ),
                   )}
@@ -3738,7 +3755,9 @@ Dev|withMe`,
                           status
                         }
                       >
-                        {status}
+                        {
+                          status
+                        }
                       </SelectItem>
                     ),
                   )}
@@ -4022,11 +4041,6 @@ function BrandDialog({
               }
               placeholder="#111111, #FFFFFF, #FF6600"
             />
-
-            <p className="text-xs text-muted-foreground">
-              Separate multiple
-              colors with commas.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -4295,7 +4309,9 @@ function ClientDialog({
                           status
                         }
                       >
-                        {status}
+                        {
+                          status
+                        }
                       </SelectItem>
                     ),
                   )}

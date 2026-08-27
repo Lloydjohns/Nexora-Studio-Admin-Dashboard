@@ -1,7 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  useRouter,
+  useSearchParams,
+} from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Plus,
@@ -76,8 +79,14 @@ import {
   deleteProject,
 } from '@/lib/api';
 
-import { type ProjectStage } from '@/lib/data';
-import { useFetch } from '@/hooks/use-fetch';
+import {
+  type ProjectStage,
+} from '@/lib/data';
+
+import {
+  useFetch,
+} from '@/hooks/use-fetch';
+
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -96,14 +105,19 @@ const stages: ProjectStage[] = [
   'Completed',
 ];
 
-const stageAccent: Record<string, string> = {
+const stageAccent: Record<
+  string,
+  string
+> = {
   Discovery: 'bg-blue-500',
   Planning: 'bg-indigo-500',
-  'Content Creation': 'bg-violet-500',
+  'Content Creation':
+    'bg-violet-500',
   Design: 'bg-purple-500',
   Development: 'bg-amber-500',
   Review: 'bg-orange-500',
-  'Client Approval': 'bg-teal-500',
+  'Client Approval':
+    'bg-teal-500',
   Completed: 'bg-emerald-500',
 };
 
@@ -134,28 +148,39 @@ interface ProjectForm {
   progress: number;
   deadline: string;
   team: string;
-  priority: 'Low' | 'Medium' | 'High';
+  priority:
+    | 'Low'
+    | 'Medium'
+    | 'High';
 }
 
-const emptyForm: ProjectForm = {
-  name: '',
-  client: '',
-  serviceType: 'Social Media',
-  stage: 'Discovery',
-  progress: 0,
-  deadline: new Date(
-    Date.now() + 14 * 86400000,
-  )
-    .toISOString()
-    .split('T')[0],
-  team: '',
-  priority: 'Medium',
-};
+const emptyForm: ProjectForm =
+  {
+    name: '',
+    client: '',
+    serviceType:
+      'Social Media',
+    stage: 'Discovery',
+    progress: 0,
+    deadline: new Date(
+      Date.now() +
+        14 *
+          86400000,
+    )
+      .toISOString()
+      .split('T')[0],
+    team: '',
+    priority: 'Medium',
+  };
 
-function getInitials(name: string) {
+function getInitials(
+  name: string,
+) {
   return name
     .split(' ')
-    .map((n) => n[0])
+    .map(
+      (n) => n[0],
+    )
     .join('')
     .slice(0, 2);
 }
@@ -166,17 +191,23 @@ function getInitials(name: string) {
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams =
+    useSearchParams();
 
   /*
-   * These come from:
-   * /projects?clientId=XXXX&client=Company
+   * These are supplied from Clients page:
+   *
+   * /projects?clientId=CLIENT_ID&client=COMPANY
    */
   const clientId =
-    searchParams.get('clientId');
+    searchParams.get(
+      'clientId',
+    );
 
   const clientName =
-    searchParams.get('client') || '';
+    searchParams.get(
+      'client',
+    ) || '';
 
   const [refreshKey, setRefreshKey] =
     React.useState(0);
@@ -190,22 +221,37 @@ export default function ProjectsPage() {
   );
 
   const refetch = () =>
-    setRefreshKey((k) => k + 1);
+    setRefreshKey(
+      (k) => k + 1,
+    );
 
-  const [open, setOpen] =
-    React.useState(false);
+  const [
+    open,
+    setOpen,
+  ] = React.useState(false);
 
-  const [editId, setEditId] =
-    React.useState<string | null>(null);
+  const [
+    editId,
+    setEditId,
+  ] = React.useState<
+    string | null
+  >(null);
 
-  const [submitting, setSubmitting] =
-    React.useState(false);
+  const [
+    submitting,
+    setSubmitting,
+  ] = React.useState(false);
 
-  const [form, setForm] =
-    React.useState<ProjectForm>({
+  const [
+    form,
+    setForm,
+  ] = React.useState<ProjectForm>(
+    {
       ...emptyForm,
-      client: clientName,
-    });
+      client:
+        clientName,
+    },
+  );
 
   const allProjects =
     projects ?? [];
@@ -213,21 +259,42 @@ export default function ProjectsPage() {
   const inProgress =
     allProjects.filter(
       (p) =>
-        p.stage !== 'Completed',
+        p.stage !==
+        'Completed',
     ).length;
 
   const completed =
     allProjects.filter(
       (p) =>
-        p.stage === 'Completed',
+        p.stage ===
+        'Completed',
     ).length;
 
   const highPriority =
     allProjects.filter(
       (p) =>
-        p.priority === 'High' &&
-        p.stage !== 'Completed',
+        p.priority ===
+          'High' &&
+        p.stage !==
+          'Completed',
     ).length;
+
+  /* ============================================================
+     UPDATE FORM WHEN URL CLIENT CHANGES
+  ============================================================ */
+
+  React.useEffect(() => {
+    if (!editId) {
+      setForm((current) => ({
+        ...current,
+        client:
+          clientName,
+      }));
+    }
+  }, [
+    clientName,
+    editId,
+  ]);
 
   /* ============================================================
      ADD PROJECT
@@ -238,7 +305,8 @@ export default function ProjectsPage() {
 
     setForm({
       ...emptyForm,
-      client: clientName,
+      client:
+        clientName,
     });
 
     setOpen(true);
@@ -248,10 +316,13 @@ export default function ProjectsPage() {
      EDIT PROJECT
   ============================================================ */
 
-  function openEdit(id: string) {
+  function openEdit(
+    id: string,
+  ) {
     const p =
       allProjects.find(
-        (x) => x.id === id,
+        (x) =>
+          x.id === id,
       );
 
     if (!p) return;
@@ -264,10 +335,16 @@ export default function ProjectsPage() {
       serviceType:
         p.serviceType,
       stage: p.stage,
-      progress: p.progress,
-      deadline: p.deadline,
-      team: p.team.join(', '),
-      priority: p.priority,
+      progress:
+        p.progress,
+      deadline:
+        p.deadline,
+      team:
+        p.team.join(
+          ', ',
+        ),
+      priority:
+        p.priority,
     });
 
     setOpen(true);
@@ -286,6 +363,7 @@ export default function ProjectsPage() {
       toast.error(
         'Project name is required.',
       );
+
       return;
     }
 
@@ -293,6 +371,26 @@ export default function ProjectsPage() {
       toast.error(
         'Client is required.',
       );
+
+      return;
+    }
+
+    /*
+     * A new project coming from a client should have
+     * clientId available.
+     */
+    if (
+      !editId &&
+      !clientId
+    ) {
+      toast.error(
+        'This project is not connected to a client.',
+        {
+          description:
+            'Create the project from the client workspace so the client ID can be attached.',
+        },
+      );
+
       return;
     }
 
@@ -300,17 +398,17 @@ export default function ProjectsPage() {
 
     try {
       const payload = {
-        name: form.name.trim(),
+        name:
+          form.name.trim(),
 
         /*
-         * Keep the existing client/company field
-         * so your current UI/API remains compatible.
+         * Keep existing field for compatibility.
          */
-        client: form.client.trim(),
+        client:
+          form.client.trim(),
 
         /*
-         * New relationship:
-         * projects.client_id -> clients.id
+         * THIS is the database relationship.
          */
         client_id:
           clientId || null,
@@ -330,8 +428,13 @@ export default function ProjectsPage() {
         team:
           form.team
             .split(',')
-            .map((t) => t.trim())
-            .filter(Boolean),
+            .map(
+              (t) =>
+                t.trim(),
+            )
+            .filter(
+              Boolean,
+            ),
 
         priority:
           form.priority,
@@ -344,46 +447,35 @@ export default function ProjectsPage() {
         );
 
         toast.success(
-          'Project updated',
+          'Project updated.',
         );
       } else {
-        const createdProject =
-          await insertProject(
-            payload,
-          );
-
-        toast.success(
-          'Project created',
+        await insertProject(
+          payload,
         );
 
-        /*
-         * If your API returns the newly created project,
-         * automatically open its project file page.
-         */
-        const createdId =
-          createdProject?.id;
-
-        if (createdId) {
-          setOpen(false);
-
-          router.push(
-            `/projects/${createdId}`,
-          );
-
-          return;
-        }
+        toast.success(
+          'Project created and connected to the client.',
+        );
       }
 
       setOpen(false);
+      setEditId(null);
+
+      /*
+       * Return to project list and reload the data.
+       */
       refetch();
-    } catch (err: any) {
+    } catch (
+      err: any
+    ) {
       console.error(
         'Project save error:',
         err,
       );
 
       toast.error(
-        'Failed to save project',
+        'Failed to save project.',
         {
           description:
             err?.message ||
@@ -403,16 +495,20 @@ export default function ProjectsPage() {
     id: string,
   ) {
     try {
-      await deleteProject(id);
+      await deleteProject(
+        id,
+      );
 
       toast.success(
-        'Project deleted',
+        'Project deleted.',
       );
 
       refetch();
-    } catch (err: any) {
+    } catch (
+      err: any
+    ) {
       toast.error(
-        'Failed to delete project',
+        'Failed to delete project.',
         {
           description:
             err?.message ||
@@ -423,7 +519,7 @@ export default function ProjectsPage() {
   }
 
   /* ============================================================
-     OPEN PROJECT FILE PAGE
+     PROJECT FILE PAGE
   ============================================================ */
 
   function openProjectFile(
@@ -446,14 +542,14 @@ export default function ProjectsPage() {
       >
         <Button
           size="sm"
-          onClick={openAdd}
+          onClick={
+            openAdd
+          }
         >
           <Plus className="mr-1.5 h-4 w-4" />
           New Project
         </Button>
       </PageHeader>
-
-      {/* KPIs */}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
@@ -461,7 +557,9 @@ export default function ProjectsPage() {
           value={String(
             allProjects.length,
           )}
-          icon={FolderKanban}
+          icon={
+            FolderKanban
+          }
           index={0}
         />
 
@@ -472,7 +570,9 @@ export default function ProjectsPage() {
           )}
           delta="+3"
           trend="up"
-          icon={TrendingUp}
+          icon={
+            TrendingUp
+          }
           accent="text-amber-600 bg-amber-100 dark:bg-amber-500/15 dark:text-amber-400"
           index={1}
         />
@@ -494,13 +594,13 @@ export default function ProjectsPage() {
           value={String(
             highPriority,
           )}
-          icon={AlertCircle}
+          icon={
+            AlertCircle
+          }
           accent="text-rose-600 bg-rose-100 dark:bg-rose-500/15 dark:text-rose-400"
           index={3}
         />
       </div>
-
-      {/* TABS */}
 
       <Tabs
         defaultValue="board"
@@ -527,18 +627,25 @@ export default function ProjectsPage() {
               {stages.map(
                 (stage) => (
                   <div
-                    key={stage}
+                    key={
+                      stage
+                    }
                     className="w-72 shrink-0 space-y-2"
                   >
-                    <div className="h-8 rounded bg-muted animate-pulse" />
+                    <div className="h-8 animate-pulse rounded bg-muted" />
 
                     {Array.from({
                       length: 2,
                     }).map(
-                      (_, i) => (
+                      (
+                        _,
+                        i,
+                      ) => (
                         <div
-                          key={i}
-                          className="h-24 rounded-lg bg-muted animate-pulse"
+                          key={
+                            i
+                          }
+                          className="h-24 animate-pulse rounded-lg bg-muted"
                         />
                       ),
                     )}
@@ -552,14 +659,18 @@ export default function ProjectsPage() {
                 (stage) => {
                   const stageProjects =
                     allProjects.filter(
-                      (p) =>
+                      (
+                        p,
+                      ) =>
                         p.stage ===
                         stage,
                     );
 
                   return (
                     <div
-                      key={stage}
+                      key={
+                        stage
+                      }
                       className="w-72 shrink-0"
                     >
                       <div className="mb-2 flex items-center gap-2 px-1">
@@ -573,7 +684,9 @@ export default function ProjectsPage() {
                         />
 
                         <p className="text-sm font-semibold">
-                          {stage}
+                          {
+                            stage
+                          }
                         </p>
 
                         <Badge
@@ -597,11 +710,13 @@ export default function ProjectsPage() {
                                 p.id
                               }
                               initial={{
-                                opacity: 0,
+                                opacity:
+                                  0,
                                 y: 8,
                               }}
                               animate={{
-                                opacity: 1,
+                                opacity:
+                                  1,
                                 y: 0,
                               }}
                               transition={{
@@ -682,9 +797,12 @@ export default function ProjectsPage() {
                                         3 && (
                                         <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
                                           +
-                                          {p.team
-                                            .length -
-                                            3}
+                                          {
+                                            p
+                                              .team
+                                              .length -
+                                              3
+                                          }
                                         </div>
                                       )}
                                     </div>
@@ -769,28 +887,32 @@ export default function ProjectsPage() {
                 {loading ? (
                   Array.from({
                     length: 4,
-                  }).map((_, i) => (
-                    <TableRow
-                      key={i}
-                    >
-                      {Array.from({
-                        length: 7,
-                      }).map(
-                        (
-                          __,
-                          j,
-                        ) => (
-                          <TableCell
-                            key={
-                              j
-                            }
-                          >
-                            <div className="h-4 w-20 rounded bg-muted animate-pulse" />
-                          </TableCell>
-                        ),
-                      )}
-                    </TableRow>
-                  ))
+                  }).map(
+                    (_, i) => (
+                      <TableRow
+                        key={
+                          i
+                        }
+                      >
+                        {Array.from({
+                          length: 7,
+                        }).map(
+                          (
+                            __,
+                            j,
+                          ) => (
+                            <TableCell
+                              key={
+                                j
+                              }
+                            >
+                              <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+                            </TableCell>
+                          ),
+                        )}
+                      </TableRow>
+                    ),
+                  )
                 ) : (
                   allProjects.map(
                     (p) => (
@@ -948,11 +1070,21 @@ export default function ProjectsPage() {
                 />
 
                 {clientId && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Connected to selected
-                    client.
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                    ✓ Connected to
+                    selected client
                   </p>
                 )}
+
+                {!clientId &&
+                  !editId && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Open New Project
+                      from a client
+                      workspace to link
+                      this project.
+                    </p>
+                  )}
               </div>
 
               <div className="space-y-2">
@@ -980,7 +1112,9 @@ export default function ProjectsPage() {
 
                   <SelectContent>
                     {serviceTypeOptions.map(
-                      (service) => (
+                      (
+                        service,
+                      ) => (
                         <SelectItem
                           key={
                             service
@@ -1190,7 +1324,9 @@ export default function ProjectsPage() {
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  setOpen(false)
+                  setOpen(
+                    false,
+                  )
                 }
               >
                 Cancel
