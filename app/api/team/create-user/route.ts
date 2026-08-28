@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
+import { Resend } from 'resend';
+
 import { createClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+
+/* ============================================================
+   TYPES
+============================================================ */
 
 type CreateUserBody = {
   name: string;
@@ -27,7 +33,9 @@ function jsonError(
       success: false,
       error: message,
     },
-    { status },
+    {
+      status,
+    },
   );
 }
 
@@ -37,6 +45,32 @@ function normalizeEmail(
   return String(value ?? '')
     .trim()
     .toLowerCase();
+}
+
+function getAdminEmails(): string[] {
+  return String(
+    process.env.ADMIN_EMAILS ?? '',
+  )
+    .split(',')
+    .map(normalizeEmail)
+    .filter(Boolean);
+}
+
+/* ============================================================
+   RESEND
+============================================================ */
+
+function getResend() {
+  const apiKey =
+    process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      'Server email configuration is missing: RESEND_API_KEY.',
+    );
+  }
+
+  return new Resend(apiKey);
 }
 
 /* ============================================================
@@ -82,29 +116,11 @@ export async function POST(
       );
 
     /* ========================================================
-       2. VERIFY ADMIN
+       2. VERIFY ADMIN EMAIL
     ======================================================== */
 
-    /*
-     * ADMIN_EMAILS should contain the email(s) that are allowed
-     * to create team accounts.
-     *
-     * Example:
-     *
-     * ADMIN_EMAILS=admin@example.com
-     *
-     * Multiple:
-     *
-     * ADMIN_EMAILS=admin@example.com,owner@example.com
-     */
-
     const adminEmails =
-      String(
-        process.env.ADMIN_EMAILS ?? '',
-      )
-        .split(',')
-        .map(normalizeEmail)
-        .filter(Boolean);
+      getAdminEmails();
 
     if (
       adminEmails.length === 0
@@ -114,10 +130,18 @@ export async function POST(
       );
 
       return jsonError(
-        'ADMIN_EMAILS is not configured on the server. Add your administrator email to Vercel Environment Variables and redeploy.',
+        'ADMIN_EMAILS is not configured on the server. Add your administrator email(s) to Vercel Environment Variables and redeploy.',
         500,
       );
     }
+
+    console.log(
+      'Team account creation authorization:',
+      {
+        currentUserEmail,
+        adminEmails,
+      },
+    );
 
     if (
       !adminEmails.includes(
@@ -224,7 +248,7 @@ export async function POST(
       );
 
     /* ========================================================
-       5. VALIDATE
+       5. VALIDATION
     ======================================================== */
 
     if (!name) {
@@ -276,19 +300,14 @@ export async function POST(
     }
 
     /* ========================================================
-       6. CREATE SERVER ADMIN CLIENT
+       6. SUPABASE ADMIN CLIENT
     ======================================================== */
 
-    /*
-     * This uses the Supabase SERVICE ROLE key.
-     *
-     * It is SERVER ONLY.
-     */
     const supabaseAdmin =
       createSupabaseAdmin();
 
     /* ========================================================
-       7. CHECK WHETHER EMAIL ALREADY EXISTS
+       7. CHECK EXISTING AUTH USER
     ======================================================== */
 
     const {
@@ -330,7 +349,7 @@ export async function POST(
     }
 
     /* ========================================================
-       8. CREATE AUTH ACCOUNT
+       8. CREATE SUPABASE AUTH USER
     ======================================================== */
 
     const {
@@ -343,13 +362,12 @@ export async function POST(
           password,
 
           /*
-           * User can log in immediately.
+           * The account can immediately sign in.
            */
           email_confirm: true,
 
           /*
-           * Store useful profile information in
-           * Supabase Auth metadata.
+           * Store non-sensitive profile information.
            */
           user_metadata: {
             full_name: name,
@@ -395,11 +413,13 @@ export async function POST(
     ======================================================== */
 
     /*
-     * Explicitly type this as a record.
+     * IMPORTANT:
      *
-     * This prevents the TypeScript `never[]` problem that
-     * previously appeared in your build.
+     * Do NOT save the password here.
+     *
+     * Supabase Auth stores the password securely.
      */
+
     const teamMemberPayload:
       Record<
         string,
@@ -408,13 +428,33 @@ export async function POST(
       name,
       role,
       email,
+
+      /*
+       * Your database has an avatar column.
+       * Generate initials automatically.
+       */
+      avatar: name
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(
+          (part) =>
+            part.charAt(0),
+        )
+        .join('')
+        .slice(0, 2)
+        .toUpperCase(),
+
       active_projects:
         activeProjects,
+
       tasks_assigned:
         tasksAssigned,
+
       tasks_completed:
         tasksCompleted,
+
       availability,
+
       utilization,
     };
 
@@ -473,7 +513,201 @@ export async function POST(
     }
 
     /* ========================================================
-       10. SUCCESS
+       10. SEND RESEND EMAIL
+    ======================================================== */
+
+    let emailSent =
+      false;
+
+    let emailErrorMessage:
+      | string
+      | null = null;
+
+    try {
+      const resend =
+        getResend();
+
+      const fromEmail =
+        process.env.RESEND_FROM_EMAIL;
+
+      const dashboardUrl =
+        process.env.NEXT_PUBLIC_APP_URL;
+
+      if (!fromEmail) {
+        throw new Error(
+          'RESEND_FROM_EMAIL is not configured.',
+        );
+      }
+
+      if (!dashboardUrl) {
+        throw new Error(
+          'NEXT_PUBLIC_APP_URL is not configured.',
+        );
+      }
+
+      const cleanDashboardUrl =
+        dashboardUrl.replace(
+          /\/$/,
+          '',
+        );
+
+      const {
+        error: resendError,
+      } =
+        await resend.emails.send(
+          {
+            from: fromEmail,
+
+            to: [
+              email,
+            ],
+
+            subject:
+              'Your Nexora Studio Admin Dashboard Account',
+
+            html: `
+              <div
+                style="
+                  font-family: Arial, Helvetica, sans-serif;
+                  max-width: 600px;
+                  margin: 0 auto;
+                  padding: 32px;
+                  color: #111827;
+                  background: #ffffff;
+                "
+              >
+                <h1
+                  style="
+                    margin-bottom: 8px;
+                    font-size: 24px;
+                  "
+                >
+                  Welcome to Nexora Studio
+                </h1>
+
+                <p
+                  style="
+                    color: #4b5563;
+                    line-height: 1.6;
+                  "
+                >
+                  Hello ${name},
+                </p>
+
+                <p
+                  style="
+                    color: #4b5563;
+                    line-height: 1.6;
+                  "
+                >
+                  Your Nexora Studio Admin Dashboard
+                  account has been created successfully.
+                  You can now access the dashboard using
+                  the credentials below.
+                </p>
+
+                <div
+                  style="
+                    margin: 24px 0;
+                    padding: 20px;
+                    background: #f3f4f6;
+                    border-radius: 10px;
+                  "
+                >
+                  <p style="margin: 8px 0;">
+                    <strong>Name:</strong>
+                    ${name}
+                  </p>
+
+                  <p style="margin: 8px 0;">
+                    <strong>Role:</strong>
+                    ${role}
+                  </p>
+
+                  <p style="margin: 8px 0;">
+                    <strong>Email:</strong>
+                    ${email}
+                  </p>
+
+                  <p style="margin: 8px 0;">
+                    <strong>Initial Password:</strong>
+                    ${password}
+                  </p>
+                </div>
+
+                <div
+                  style="
+                    margin: 28px 0;
+                    text-align: center;
+                  "
+                >
+                  <a
+                    href="${cleanDashboardUrl}"
+                    style="
+                      display: inline-block;
+                      padding: 12px 22px;
+                      background: #111827;
+                      color: #ffffff;
+                      text-decoration: none;
+                      border-radius: 8px;
+                      font-weight: 600;
+                    "
+                  >
+                    Access Nexora Dashboard
+                  </a>
+                </div>
+
+                <p
+                  style="
+                    color: #6b7280;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  "
+                >
+                  For security, please change your
+                  password after signing in if your
+                  dashboard provides a password-change
+                  option.
+                </p>
+
+                <p
+                  style="
+                    color: #6b7280;
+                    font-size: 13px;
+                  "
+                >
+                  This email was sent automatically by
+                  Nexora Studio.
+                </p>
+              </div>
+            `,
+          },
+        );
+
+      if (resendError) {
+        throw new Error(
+          resendError.message ||
+            'Resend failed to send the email.',
+        );
+      }
+
+      emailSent =
+        true;
+    } catch (
+      resendError: any
+    ) {
+      console.error(
+        'Failed to send team member email:',
+        resendError,
+      );
+
+      emailErrorMessage =
+        resendError?.message ||
+        'The account was created, but the email could not be sent.';
+    }
+
+    /* ========================================================
+       11. SUCCESS
     ======================================================== */
 
     createdAuthUserId =
@@ -484,18 +718,43 @@ export async function POST(
         success: true,
 
         message:
-          'Team account created successfully.',
+          emailSent
+            ? 'Team account created and email sent successfully.'
+            : 'Team account created, but the email could not be sent.',
 
         userId:
           authData.user.id,
 
         member,
+
+        /*
+         * Returned ONLY after successful creation.
+         *
+         * It is NOT stored in team_members.
+         */
+        credentials: {
+          name,
+          email,
+          password,
+        },
+
+        emailSent,
+
+        emailError:
+          emailErrorMessage,
+
+        dashboardUrl:
+          process.env
+            .NEXT_PUBLIC_APP_URL ??
+          null,
       },
       {
         status: 201,
       },
     );
-  } catch (error: any) {
+  } catch (
+    error: any
+  ) {
     console.error(
       'Create team account error:',
       error,

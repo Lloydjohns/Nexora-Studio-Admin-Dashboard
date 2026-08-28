@@ -3,9 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 /*
  * SERVER-ONLY SUPABASE ADMIN CLIENT
  *
- * Never import this file into a client component.
+ * IMPORTANT:
  *
- * The service-role key must NEVER use NEXT_PUBLIC_.
+ * This file must NEVER be imported into:
+ *
+ * - Client Components
+ * - Browser code
+ * - Files containing "use client"
+ *
+ * SUPABASE_SERVICE_ROLE_KEY has full database privileges.
  */
 
 export function createSupabaseAdmin() {

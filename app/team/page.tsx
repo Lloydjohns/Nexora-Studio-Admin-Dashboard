@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { motion } from 'framer-motion';
+
 import {
   Plus,
   UsersRound,
@@ -9,6 +10,10 @@ import {
   CheckSquare,
   TrendingUp,
   Trash2,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 import {
@@ -153,6 +158,19 @@ const emptyForm: MemberForm = {
 };
 
 /* ============================================================
+   CREATED CREDENTIALS
+============================================================ */
+
+interface CreatedCredentials {
+  name: string;
+  email: string;
+  password: string;
+  dashboardUrl: string | null;
+  emailSent: boolean;
+  emailError: string | null;
+}
+
+/* ============================================================
    PAGE
 ============================================================ */
 
@@ -185,6 +203,11 @@ export default function TeamPage() {
   ] = React.useState(false);
 
   const [
+    credentialsOpen,
+    setCredentialsOpen,
+  ] = React.useState(false);
+
+  const [
     editId,
     setEditId,
   ] = React.useState<
@@ -202,6 +225,31 @@ export default function TeamPage() {
   ] = React.useState<MemberForm>(
     emptyForm,
   );
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = React.useState(false);
+
+  const [
+    showCreatedPassword,
+    setShowCreatedPassword,
+  ] = React.useState(false);
+
+  const [
+    copiedField,
+    setCopiedField,
+  ] = React.useState<
+    string | null
+  >(null);
+
+  const [
+    createdCredentials,
+    setCreatedCredentials,
+  ] =
+    React.useState<CreatedCredentials | null>(
+      null,
+    );
 
   /* ==========================================================
      DATA
@@ -270,7 +318,7 @@ export default function TeamPage() {
           85
             ? 'hsl(0, 72%, 51%)'
             : member.utilization >
-              70
+                70
               ? 'hsl(38, 92%, 50%)'
               : 'hsl(142, 71%, 45%)',
       }),
@@ -285,6 +333,7 @@ export default function TeamPage() {
   ) {
     return name
       .split(' ')
+      .filter(Boolean)
       .map(
         (part) =>
           part[0],
@@ -294,12 +343,43 @@ export default function TeamPage() {
       .toUpperCase();
   }
 
+  async function copyToClipboard(
+    value: string,
+    field: string,
+  ) {
+    try {
+      await navigator.clipboard.writeText(
+        value,
+      );
+
+      setCopiedField(
+        field,
+      );
+
+      toast.success(
+        `${field} copied.`,
+      );
+
+      setTimeout(() => {
+        setCopiedField(
+          null,
+        );
+      }, 1500);
+    } catch {
+      toast.error(
+        'Unable to copy to clipboard.',
+      );
+    }
+  }
+
   /* ==========================================================
      ADD MEMBER
   ========================================================== */
 
   function openAdd() {
     setEditId(null);
+
+    setShowPassword(false);
 
     setForm({
       ...emptyForm,
@@ -330,6 +410,8 @@ export default function TeamPage() {
 
     setEditId(id);
 
+    setShowPassword(false);
+
     setForm({
       name:
         member.name,
@@ -341,7 +423,7 @@ export default function TeamPage() {
         member.email,
 
       /*
-       * Never load or expose an existing password.
+       * Existing passwords are NEVER loaded.
        */
       password: '',
 
@@ -397,9 +479,6 @@ export default function TeamPage() {
       return;
     }
 
-    /*
-     * New accounts require a password.
-     */
     if (
       !editId &&
       form.password.length < 8
@@ -414,7 +493,7 @@ export default function TeamPage() {
 
     try {
       /* ======================================================
-         EDIT EXISTING TEAM MEMBER
+         EDIT
       ====================================================== */
 
       if (editId) {
@@ -426,7 +505,9 @@ export default function TeamPage() {
             form.role,
 
           email:
-            form.email.trim(),
+            form.email
+              .trim()
+              .toLowerCase(),
 
           active_projects:
             Number(
@@ -471,7 +552,7 @@ export default function TeamPage() {
       }
 
       /* ======================================================
-         CREATE NEW AUTH ACCOUNT
+         CREATE AUTH ACCOUNT
       ====================================================== */
 
       const response =
@@ -524,7 +605,9 @@ export default function TeamPage() {
           },
         );
 
-      let result: any = null;
+      let result:
+        | any
+        | null = null;
 
       try {
         result =
@@ -540,21 +623,78 @@ export default function TeamPage() {
         );
       }
 
-      toast.success(
-        'Team account created successfully.',
-        {
-          description:
-            `${form.name.trim()} can now sign in using ${form.email.trim()}.`,
-        },
-      );
+      /* ======================================================
+         STORE CREATED CREDENTIALS
+      ====================================================== */
+
+      if (
+        result?.credentials
+      ) {
+        setCreatedCredentials({
+          name:
+            result.credentials
+              .name,
+
+          email:
+            result.credentials
+              .email,
+
+          password:
+            result.credentials
+              .password,
+
+          dashboardUrl:
+            result.dashboardUrl ??
+            null,
+
+          emailSent:
+            Boolean(
+              result.emailSent,
+            ),
+
+          emailError:
+            result.emailError ??
+            null,
+        });
+
+        setShowCreatedPassword(
+          false,
+        );
+
+        setCredentialsOpen(
+          true,
+        );
+      }
+
+      /* ======================================================
+         CLOSE FORM
+      ====================================================== */
 
       setOpen(false);
       setEditId(null);
       setForm({
         ...emptyForm,
       });
+      setShowPassword(false);
 
       refetch();
+
+      if (
+        result?.emailSent
+      ) {
+        toast.success(
+          'Team account created and email sent.',
+        );
+      } else {
+        toast.warning(
+          'Team account created, but the email was not sent.',
+          {
+            description:
+              result?.emailError ||
+              'Check your Resend configuration.',
+          },
+        );
+      }
     } catch (
       error: any
     ) {
@@ -601,10 +741,6 @@ export default function TeamPage() {
         'Team member removed.',
       );
 
-      /*
-       * If the deleted member is currently
-       * being edited, close the dialog.
-       */
       if (
         editId === id
       ) {
@@ -1171,9 +1307,14 @@ export default function TeamPage() {
 
           if (!value) {
             setEditId(null);
+
             setForm({
               ...emptyForm,
             });
+
+            setShowPassword(
+              false,
+            );
           }
         }}
       >
@@ -1193,6 +1334,7 @@ export default function TeamPage() {
             className="space-y-4"
           >
             <div className="grid gap-4 sm:grid-cols-2">
+
               {/* NAME */}
 
               <div className="space-y-2">
@@ -1258,34 +1400,62 @@ export default function TeamPage() {
                     Initial Password
                   </Label>
 
-                  <Input
-                    id="team-password"
-                    type="password"
-                    value={
-                      form.password
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setForm({
-                        ...form,
-                        password:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                    placeholder="Create initial password"
-                    minLength={
-                      8
-                    }
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      id="team-password"
+                      type={
+                        showPassword
+                          ? 'text'
+                          : 'password'
+                      }
+                      value={
+                        form.password
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setForm({
+                          ...form,
+                          password:
+                            event
+                              .target
+                              .value,
+                        })
+                      }
+                      placeholder="Create initial password"
+                      minLength={
+                        8
+                      }
+                      required
+                      className="pr-10"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-10 w-10"
+                      onClick={() =>
+                        setShowPassword(
+                          (
+                            value,
+                          ) =>
+                            !value,
+                        )
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
 
                   <p className="text-[11px] text-muted-foreground">
                     Minimum 8 characters.
-                    This password is used for
-                    the member's first sign in.
+                    You can click the eye icon
+                    to see the password you created.
                   </p>
                 </div>
               )}
@@ -1546,12 +1716,18 @@ export default function TeamPage() {
                   setOpen(
                     false,
                   );
+
                   setEditId(
                     null,
                   );
+
                   setForm({
                     ...emptyForm,
                   });
+
+                  setShowPassword(
+                    false,
+                  );
                 }}
                 disabled={
                   submitting
@@ -1567,13 +1743,253 @@ export default function TeamPage() {
                 }
               >
                 {submitting
-                  ? 'Saving...'
+                  ? 'Creating...'
                   : editId
                     ? 'Update Member'
                     : 'Create Account'}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================
+         CREATED ACCOUNT / CREDENTIALS DIALOG
+      ====================================================== */}
+
+      <Dialog
+        open={
+          credentialsOpen
+        }
+        onOpenChange={(
+          value,
+        ) => {
+          setCredentialsOpen(
+            value,
+          );
+
+          if (!value) {
+            setCreatedCredentials(
+              null,
+            );
+
+            setShowCreatedPassword(
+              false,
+            );
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Account Created Successfully
+            </DialogTitle>
+          </DialogHeader>
+
+          {createdCredentials && (
+            <div className="space-y-5">
+
+              {/* SUCCESS MESSAGE */}
+
+              <div className="rounded-lg border bg-muted/50 p-4">
+                <p className="text-sm font-medium">
+                  {
+                    createdCredentials.name
+                  }
+                  's account is ready.
+                </p>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The credentials below are the
+                  initial login credentials you created.
+                </p>
+              </div>
+
+              {/* EMAIL STATUS */}
+
+              {createdCredentials.emailSent ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-emerald-600" />
+
+                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                      Email sent successfully
+                    </p>
+                  </div>
+
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The team member has been sent
+                    their account credentials.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    Account created, but email was not sent.
+                  </p>
+
+                  {createdCredentials.emailError && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {
+                        createdCredentials.emailError
+                      }
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* EMAIL */}
+
+              <div className="space-y-2">
+                <Label>
+                  Email
+                </Label>
+
+                <div className="flex gap-2">
+                  <Input
+                    value={
+                      createdCredentials.email
+                    }
+                    readOnly
+                  />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      copyToClipboard(
+                        createdCredentials.email,
+                        'Email',
+                      )
+                    }
+                  >
+                    {copiedField ===
+                    'Email' ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* PASSWORD */}
+
+              <div className="space-y-2">
+                <Label>
+                  Initial Password
+                </Label>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={
+                        showCreatedPassword
+                          ? 'text'
+                          : 'password'
+                      }
+                      value={
+                        createdCredentials.password
+                      }
+                      readOnly
+                      className="pr-10"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-10 w-10"
+                      onClick={() =>
+                        setShowCreatedPassword(
+                          (
+                            value,
+                          ) =>
+                            !value,
+                        )
+                      }
+                    >
+                      {showCreatedPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      copyToClipboard(
+                        createdCredentials.password,
+                        'Password',
+                      )
+                    }
+                  >
+                    {copiedField ===
+                    'Password' ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground">
+                  This password is not stored in the
+                  team_members table.
+                </p>
+              </div>
+
+              {/* DASHBOARD */}
+
+              {createdCredentials.dashboardUrl && (
+                <div className="space-y-2">
+                  <Label>
+                    Dashboard
+                  </Label>
+
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={() =>
+                      window.open(
+                        createdCredentials.dashboardUrl!,
+                        '_blank',
+                        'noopener,noreferrer',
+                      )
+                    }
+                  >
+                    Open Nexora Dashboard
+                  </Button>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setCredentialsOpen(
+                      false,
+                    );
+
+                    setCreatedCredentials(
+                      null,
+                    );
+
+                    setShowCreatedPassword(
+                      false,
+                    );
+                  }}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardShell>
