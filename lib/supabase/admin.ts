@@ -1,25 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
 /*
+ * ============================================================
  * SERVER-ONLY SUPABASE ADMIN CLIENT
+ * ============================================================
  *
  * IMPORTANT:
  *
- * This file must NEVER be imported into:
+ * NEVER import this file into a Client Component.
  *
- * - Client Components
- * - Browser code
- * - Files containing "use client"
+ * SUPABASE_SERVICE_ROLE_KEY has full database/auth privileges.
  *
- * SUPABASE_SERVICE_ROLE_KEY has full database privileges.
+ * NEVER use NEXT_PUBLIC_ on the service-role key.
  */
 
 export function createSupabaseAdmin() {
   const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 
   const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
   if (!supabaseUrl) {
     throw new Error(

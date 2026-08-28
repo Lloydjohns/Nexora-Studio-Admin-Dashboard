@@ -3,20 +3,44 @@ import { cookies } from 'next/headers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * ============================================================
  * SERVER SUPABASE CLIENT
+ * ============================================================
  *
- * Used for checking the currently authenticated user.
+ * Used by:
+ * - Server Components
+ * - Route Handlers
+ * - Server Actions
  *
- * This client uses the user's normal Supabase session.
+ * This client uses the currently logged-in user's session.
  *
- * DO NOT use the service-role key here.
+ * It DOES NOT use the service-role key.
  */
+
 export async function createClient(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
 
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const supabasePublishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error(
+      'Supabase configuration is missing: NEXT_PUBLIC_SUPABASE_URL.',
+    );
+  }
+
+  if (!supabasePublishableKey) {
+    throw new Error(
+      'Supabase configuration is missing: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
+    );
+  }
+
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string,
+    supabaseUrl,
+    supabasePublishableKey,
     {
       cookies: {
         getAll() {
@@ -41,10 +65,10 @@ export async function createClient(): Promise<SupabaseClient> {
           } catch {
             /*
              * Server Components cannot always
-             * modify cookies.
+             * write cookies.
              *
-             * proxy.ts is responsible for refreshing
-             * the session when necessary.
+             * proxy.ts is responsible for
+             * refreshing the session.
              */
           }
         },

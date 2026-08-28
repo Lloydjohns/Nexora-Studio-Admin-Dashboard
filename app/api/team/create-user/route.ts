@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 
 import { createClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -13,11 +12,21 @@ type CreateUserBody = {
   email: string;
   password: string;
   role: string;
+
   availability?: string;
+
   activeProjects?: number;
   tasksAssigned?: number;
   tasksCompleted?: number;
   utilization?: number;
+
+  /*
+   * Optional:
+   *
+   * If true, send the new account credentials
+   * to the team member using Resend.
+   */
+  sendWelcomeEmail?: boolean;
 };
 
 /* ============================================================
@@ -39,38 +48,359 @@ function jsonError(
   );
 }
 
+/**
+ * Normalize email addresses so:
+ *
+ * JHON@EXAMPLE.COM
+ * jhon@example.com
+ * jhon@example.com
+ *
+ * are treated as the same email.
+ */
 function normalizeEmail(
   value: unknown,
-) {
+): string {
   return String(value ?? '')
     .trim()
     .toLowerCase();
 }
 
+/**
+ * Parse ADMIN_EMAILS safely.
+ *
+ * Supports:
+ *
+ * ADMIN_EMAILS=a@gmail.com,b@gmail.com
+ *
+ * OR:
+ *
+ * ADMIN_EMAILS=a@gmail.com
+ * b@gmail.com
+ *
+ * OR:
+ *
+ * ADMIN_EMAILS=a@gmail.com; b@gmail.com
+ */
 function getAdminEmails(): string[] {
-  return String(
-    process.env.ADMIN_EMAILS ?? '',
-  )
-    .split(',')
+  const raw =
+    process.env.ADMIN_EMAILS ?? '';
+
+  return raw
+    .split(/[,\n;]+/)
     .map(normalizeEmail)
     .filter(Boolean);
 }
 
-/* ============================================================
-   RESEND
-============================================================ */
+/**
+ * Get the public application URL.
+ */
+function getAppUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    'https://nexora-studio-admin-dashboard.vercel.app'
+  ).replace(/\/+$/, '');
+}
 
-function getResend() {
-  const apiKey =
-    process.env.RESEND_API_KEY;
+/**
+ * Send welcome email through Resend.
+ *
+ * This uses the Resend REST API directly,
+ * so you do not need to install another package.
+ */
+async function sendWelcomeEmail({
+  name,
+  email,
+  password,
+  role,
+}: {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+}) {
+  const resendApiKey =
+    process.env.RESEND_API_KEY?.trim();
 
-  if (!apiKey) {
+  const resendFromEmail =
+    process.env.RESEND_FROM_EMAIL?.trim();
+
+  if (!resendApiKey) {
     throw new Error(
-      'Server email configuration is missing: RESEND_API_KEY.',
+      'RESEND_API_KEY is not configured on the server.',
     );
   }
 
-  return new Resend(apiKey);
+  if (!resendFromEmail) {
+    throw new Error(
+      'RESEND_FROM_EMAIL is not configured on the server.',
+    );
+  }
+
+  const appUrl =
+    getAppUrl();
+
+  const response =
+    await fetch(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+
+        headers: {
+          Authorization:
+            `Bearer ${resendApiKey}`,
+
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify({
+          from: resendFromEmail,
+
+          to: [email],
+
+          subject:
+            'Your Nexora Studio Admin Dashboard Account',
+
+          html: `
+            <!DOCTYPE html>
+
+            <html>
+              <head>
+                <meta charset="UTF-8" />
+
+                <meta
+                  name="viewport"
+                  content="width=device-width, initial-scale=1.0"
+                />
+
+                <title>
+                  Nexora Studio Account
+                </title>
+              </head>
+
+              <body
+                style="
+                  margin:0;
+                  padding:0;
+                  background:#f5f7fb;
+                  font-family:Arial,Helvetica,sans-serif;
+                  color:#111827;
+                "
+              >
+
+                <div
+                  style="
+                    max-width:600px;
+                    margin:40px auto;
+                    background:#ffffff;
+                    border-radius:12px;
+                    overflow:hidden;
+                    border:1px solid #e5e7eb;
+                  "
+                >
+
+                  <div
+                    style="
+                      padding:28px;
+                      background:#111827;
+                      color:#ffffff;
+                    "
+                  >
+                    <h1
+                      style="
+                        margin:0;
+                        font-size:24px;
+                      "
+                    >
+                      Nexora Studio
+                    </h1>
+
+                    <p
+                      style="
+                        margin:8px 0 0;
+                        color:#d1d5db;
+                      "
+                    >
+                      Admin Dashboard Account
+                    </p>
+                  </div>
+
+                  <div
+                    style="
+                      padding:32px;
+                    "
+                  >
+
+                    <h2
+                      style="
+                        margin-top:0;
+                      "
+                    >
+                      Hello ${escapeHtml(name)}!
+                    </h2>
+
+                    <p>
+                      An administrator has created a
+                      Nexora Studio Admin Dashboard
+                      account for you.
+                    </p>
+
+                    <p>
+                      You can now use the credentials
+                      below to access the dashboard.
+                    </p>
+
+                    <div
+                      style="
+                        margin:24px 0;
+                        padding:20px;
+                        background:#f9fafb;
+                        border:1px solid #e5e7eb;
+                        border-radius:8px;
+                      "
+                    >
+
+                      <p
+                        style="
+                          margin:0 0 10px;
+                        "
+                      >
+                        <strong>
+                          Role:
+                        </strong>
+
+                        ${escapeHtml(role)}
+                      </p>
+
+                      <p
+                        style="
+                          margin:0 0 10px;
+                        "
+                      >
+                        <strong>
+                          Email:
+                        </strong>
+
+                        ${escapeHtml(email)}
+                      </p>
+
+                      <p
+                        style="
+                          margin:0;
+                        "
+                      >
+                        <strong>
+                          Temporary Password:
+                        </strong>
+
+                        ${escapeHtml(password)}
+                      </p>
+
+                    </div>
+
+                    <a
+                      href="${appUrl}"
+                      style="
+                        display:inline-block;
+                        padding:12px 20px;
+                        background:#111827;
+                        color:#ffffff;
+                        text-decoration:none;
+                        border-radius:7px;
+                        font-weight:bold;
+                      "
+                    >
+                      Access Admin Dashboard
+                    </a>
+
+                    <p
+                      style="
+                        margin-top:28px;
+                        font-size:13px;
+                        color:#6b7280;
+                        line-height:1.6;
+                      "
+                    >
+                      For security, please change your
+                      password after signing in if your
+                      dashboard provides a password
+                      change option.
+                    </p>
+
+                    <p
+                      style="
+                        font-size:13px;
+                        color:#6b7280;
+                      "
+                    >
+                      If you did not expect this account,
+                      please contact the Nexora Studio
+                      administrator.
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </body>
+            </html>
+          `,
+        }),
+      },
+    );
+
+  if (!response.ok) {
+    let errorMessage =
+      'Resend failed to send the welcome email.';
+
+    try {
+      const errorData =
+        await response.json();
+
+      errorMessage =
+        errorData?.message ||
+        errorData?.error ||
+        errorMessage;
+    } catch {
+      // Keep default error message.
+    }
+
+    throw new Error(
+      errorMessage,
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Escape user-controlled values before
+ * placing them inside the email HTML.
+ */
+function escapeHtml(
+  value: string,
+): string {
+  return value
+    .replace(
+      /&/g,
+      '&amp;',
+    )
+    .replace(
+      /</g,
+      '&lt;',
+    )
+    .replace(
+      />/g,
+      '&gt;',
+    )
+    .replace(
+      /"/g,
+      '&quot;',
+    )
+    .replace(
+      /'/g,
+      '&#039;',
+    );
 }
 
 /* ============================================================
@@ -96,7 +426,8 @@ export async function POST(
       data: {
         user,
       },
-      error: authCheckError,
+      error:
+        authCheckError,
     } =
       await supabase.auth.getUser();
 
@@ -116,32 +447,52 @@ export async function POST(
       );
 
     /* ========================================================
-       2. VERIFY ADMIN EMAIL
+       2. LOAD ADMIN EMAILS
     ======================================================== */
 
     const adminEmails =
       getAdminEmails();
 
+    /*
+     * DEBUG INFORMATION
+     *
+     * We do NOT return the complete ADMIN_EMAILS list
+     * to the browser.
+     */
+    console.log(
+      'Team account authorization check:',
+      {
+        currentUserId:
+          user.id,
+
+        currentUserEmail,
+
+        configuredAdminCount:
+          adminEmails.length,
+
+        isAuthorized:
+          adminEmails.includes(
+            currentUserEmail,
+          ),
+      },
+    );
+
+    /* ========================================================
+       3. ADMIN_EMAILS CONFIGURATION CHECK
+    ======================================================== */
+
     if (
       adminEmails.length === 0
     ) {
-      console.error(
-        'ADMIN_EMAILS is not configured.',
-      );
-
       return jsonError(
         'ADMIN_EMAILS is not configured on the server. Add your administrator email(s) to Vercel Environment Variables and redeploy.',
         500,
       );
     }
 
-    console.log(
-      'Team account creation authorization:',
-      {
-        currentUserEmail,
-        adminEmails,
-      },
-    );
+    /* ========================================================
+       4. VERIFY ADMIN
+    ======================================================== */
 
     if (
       !adminEmails.includes(
@@ -151,22 +502,27 @@ export async function POST(
       console.warn(
         'Unauthorized team account creation attempt:',
         {
-          userId: user.id,
-          email: currentUserEmail,
+          userId:
+            user.id,
+
+          email:
+            currentUserEmail,
         },
       );
 
       return jsonError(
-        'Your account is not authorized to create team accounts.',
+        `Your account is not authorized to create team accounts. The currently signed-in email is "${currentUserEmail}". Add this exact email to ADMIN_EMAILS in Vercel if this account should be an administrator.`,
         403,
       );
     }
 
     /* ========================================================
-       3. READ REQUEST BODY
+       5. READ BODY
     ======================================================== */
 
-    let body: CreateUserBody;
+    let body:
+      | CreateUserBody
+      | null = null;
 
     try {
       body =
@@ -178,8 +534,15 @@ export async function POST(
       );
     }
 
+    if (!body) {
+      return jsonError(
+        'Request body is missing.',
+        400,
+      );
+    }
+
     /* ========================================================
-       4. NORMALIZE INPUT
+       6. NORMALIZE INPUT
     ======================================================== */
 
     const name =
@@ -199,7 +562,7 @@ export async function POST(
 
     const role =
       String(
-        body.role ?? 'Admin',
+        body.role ?? '',
       ).trim();
 
     const availability =
@@ -247,8 +610,12 @@ export async function POST(
         ),
       );
 
+    const sendWelcomeEmail =
+      body.sendWelcomeEmail !==
+      false;
+
     /* ========================================================
-       5. VALIDATION
+       7. VALIDATION
     ======================================================== */
 
     if (!name) {
@@ -300,19 +667,65 @@ export async function POST(
     }
 
     /* ========================================================
-       6. SUPABASE ADMIN CLIENT
+       8. CREATE SERVICE ROLE CLIENT
     ======================================================== */
 
     const supabaseAdmin =
       createSupabaseAdmin();
 
     /* ========================================================
-       7. CHECK EXISTING AUTH USER
+       9. CHECK TEAM MEMBER EMAIL
     ======================================================== */
 
     const {
-      data: usersData,
-      error: usersError,
+      data:
+        existingTeamMembers,
+      error:
+        teamCheckError,
+    } =
+      await supabaseAdmin
+        .from('team_members')
+        .select(
+          'id,email',
+        )
+        .ilike(
+          'email',
+          email,
+        )
+        .limit(1);
+
+    if (teamCheckError) {
+      console.error(
+        'Failed checking team member email:',
+        teamCheckError,
+      );
+
+      return jsonError(
+        'Unable to verify whether this team member already exists.',
+        500,
+      );
+    }
+
+    if (
+      existingTeamMembers &&
+      existingTeamMembers.length >
+        0
+    ) {
+      return jsonError(
+        'A team member with this email already exists.',
+        409,
+      );
+    }
+
+    /* ========================================================
+       10. CHECK SUPABASE AUTH USERS
+    ======================================================== */
+
+    const {
+      data:
+        usersData,
+      error:
+        usersError,
     } =
       await supabaseAdmin.auth.admin.listUsers(
         {
@@ -323,25 +736,29 @@ export async function POST(
 
     if (usersError) {
       console.error(
-        'Could not check existing users:',
+        'Could not check existing Auth users:',
         usersError,
       );
 
       return jsonError(
-        'Unable to verify whether this email already exists.',
+        'Unable to verify whether this authentication account already exists.',
         500,
       );
     }
 
     const existingAuthUser =
       usersData.users.find(
-        (existingUser) =>
+        (
+          existingUser,
+        ) =>
           normalizeEmail(
             existingUser.email,
           ) === email,
       );
 
-    if (existingAuthUser) {
+    if (
+      existingAuthUser
+    ) {
       return jsonError(
         'An authentication account with this email already exists.',
         409,
@@ -349,28 +766,33 @@ export async function POST(
     }
 
     /* ========================================================
-       8. CREATE SUPABASE AUTH USER
+       11. CREATE AUTH ACCOUNT
     ======================================================== */
 
     const {
-      data: authData,
-      error: authError,
+      data:
+        authData,
+      error:
+        authError,
     } =
       await supabaseAdmin.auth.admin.createUser(
         {
           email,
+
           password,
 
           /*
-           * The account can immediately sign in.
+           * The administrator is creating
+           * the account, so the account can
+           * immediately log in.
            */
-          email_confirm: true,
+          email_confirm:
+            true,
 
-          /*
-           * Store non-sensitive profile information.
-           */
           user_metadata: {
-            full_name: name,
+            full_name:
+              name,
+
             role,
           },
         },
@@ -382,8 +804,10 @@ export async function POST(
         {
           message:
             authError.message,
+
           status:
             authError.status,
+
           code:
             authError.code,
         },
@@ -409,58 +833,36 @@ export async function POST(
       authData.user.id;
 
     /* ========================================================
-       9. CREATE TEAM MEMBER
+       12. CREATE TEAM MEMBER
     ======================================================== */
 
-    /*
-     * IMPORTANT:
-     *
-     * Do NOT save the password here.
-     *
-     * Supabase Auth stores the password securely.
-     */
+    const teamMemberPayload =
+      {
+        name,
 
-    const teamMemberPayload:
-      Record<
-        string,
-        unknown
-      > = {
-      name,
-      role,
-      email,
+        role,
 
-      /*
-       * Your database has an avatar column.
-       * Generate initials automatically.
-       */
-      avatar: name
-        .split(/\s+/)
-        .filter(Boolean)
-        .map(
-          (part) =>
-            part.charAt(0),
-        )
-        .join('')
-        .slice(0, 2)
-        .toUpperCase(),
+        email,
 
-      active_projects:
-        activeProjects,
+        active_projects:
+          activeProjects,
 
-      tasks_assigned:
-        tasksAssigned,
+        tasks_assigned:
+          tasksAssigned,
 
-      tasks_completed:
-        tasksCompleted,
+        tasks_completed:
+          tasksCompleted,
 
-      availability,
+        availability,
 
-      utilization,
-    };
+        utilization,
+      };
 
     const {
-      data: member,
-      error: memberError,
+      data:
+        member,
+      error:
+        memberError,
     } =
       await supabaseAdmin
         .from('team_members')
@@ -476,19 +878,21 @@ export async function POST(
         {
           message:
             memberError.message,
+
           details:
             memberError.details,
+
           hint:
             memberError.hint,
+
           code:
             memberError.code,
         },
       );
 
-      /* ======================================================
-         ROLLBACK AUTH ACCOUNT
-      ====================================================== */
-
+      /*
+       * Rollback Auth account.
+       */
       try {
         await supabaseAdmin.auth.admin.deleteUser(
           authData.user.id,
@@ -513,201 +917,48 @@ export async function POST(
     }
 
     /* ========================================================
-       10. SEND RESEND EMAIL
+       13. SEND WELCOME EMAIL
     ======================================================== */
 
     let emailSent =
       false;
 
-    let emailErrorMessage:
+    let emailError:
       | string
       | null = null;
 
-    try {
-      const resend =
-        getResend();
-
-      const fromEmail =
-        process.env.RESEND_FROM_EMAIL;
-
-      const dashboardUrl =
-        process.env.NEXT_PUBLIC_APP_URL;
-
-      if (!fromEmail) {
-        throw new Error(
-          'RESEND_FROM_EMAIL is not configured.',
-        );
-      }
-
-      if (!dashboardUrl) {
-        throw new Error(
-          'NEXT_PUBLIC_APP_URL is not configured.',
-        );
-      }
-
-      const cleanDashboardUrl =
-        dashboardUrl.replace(
-          /\/$/,
-          '',
-        );
-
-      const {
-        error: resendError,
-      } =
-        await resend.emails.send(
-          {
-            from: fromEmail,
-
-            to: [
-              email,
-            ],
-
-            subject:
-              'Your Nexora Studio Admin Dashboard Account',
-
-            html: `
-              <div
-                style="
-                  font-family: Arial, Helvetica, sans-serif;
-                  max-width: 600px;
-                  margin: 0 auto;
-                  padding: 32px;
-                  color: #111827;
-                  background: #ffffff;
-                "
-              >
-                <h1
-                  style="
-                    margin-bottom: 8px;
-                    font-size: 24px;
-                  "
-                >
-                  Welcome to Nexora Studio
-                </h1>
-
-                <p
-                  style="
-                    color: #4b5563;
-                    line-height: 1.6;
-                  "
-                >
-                  Hello ${name},
-                </p>
-
-                <p
-                  style="
-                    color: #4b5563;
-                    line-height: 1.6;
-                  "
-                >
-                  Your Nexora Studio Admin Dashboard
-                  account has been created successfully.
-                  You can now access the dashboard using
-                  the credentials below.
-                </p>
-
-                <div
-                  style="
-                    margin: 24px 0;
-                    padding: 20px;
-                    background: #f3f4f6;
-                    border-radius: 10px;
-                  "
-                >
-                  <p style="margin: 8px 0;">
-                    <strong>Name:</strong>
-                    ${name}
-                  </p>
-
-                  <p style="margin: 8px 0;">
-                    <strong>Role:</strong>
-                    ${role}
-                  </p>
-
-                  <p style="margin: 8px 0;">
-                    <strong>Email:</strong>
-                    ${email}
-                  </p>
-
-                  <p style="margin: 8px 0;">
-                    <strong>Initial Password:</strong>
-                    ${password}
-                  </p>
-                </div>
-
-                <div
-                  style="
-                    margin: 28px 0;
-                    text-align: center;
-                  "
-                >
-                  <a
-                    href="${cleanDashboardUrl}"
-                    style="
-                      display: inline-block;
-                      padding: 12px 22px;
-                      background: #111827;
-                      color: #ffffff;
-                      text-decoration: none;
-                      border-radius: 8px;
-                      font-weight: 600;
-                    "
-                  >
-                    Access Nexora Dashboard
-                  </a>
-                </div>
-
-                <p
-                  style="
-                    color: #6b7280;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  "
-                >
-                  For security, please change your
-                  password after signing in if your
-                  dashboard provides a password-change
-                  option.
-                </p>
-
-                <p
-                  style="
-                    color: #6b7280;
-                    font-size: 13px;
-                  "
-                >
-                  This email was sent automatically by
-                  Nexora Studio.
-                </p>
-              </div>
-            `,
-          },
-        );
-
-      if (resendError) {
-        throw new Error(
-          resendError.message ||
-            'Resend failed to send the email.',
-        );
-      }
-
-      emailSent =
-        true;
-    } catch (
-      resendError: any
+    if (
+      sendWelcomeEmail
     ) {
-      console.error(
-        'Failed to send team member email:',
-        resendError,
-      );
+      try {
+        await sendWelcomeEmail({
+          name,
 
-      emailErrorMessage =
-        resendError?.message ||
-        'The account was created, but the email could not be sent.';
+          email,
+
+          password,
+
+          role,
+        });
+
+        emailSent =
+          true;
+      } catch (
+        error: any
+      ) {
+        console.error(
+          'Welcome email failed:',
+          error,
+        );
+
+        emailError =
+          error?.message ||
+          'The account was created, but the welcome email could not be sent.';
+      }
     }
 
     /* ========================================================
-       11. SUCCESS
+       14. SUCCESS
     ======================================================== */
 
     createdAuthUserId =
@@ -719,34 +970,17 @@ export async function POST(
 
         message:
           emailSent
-            ? 'Team account created and email sent successfully.'
-            : 'Team account created, but the email could not be sent.',
+            ? 'Team account created and welcome email sent successfully.'
+            : 'Team account created successfully.',
 
         userId:
           authData.user.id,
 
         member,
 
-        /*
-         * Returned ONLY after successful creation.
-         *
-         * It is NOT stored in team_members.
-         */
-        credentials: {
-          name,
-          email,
-          password,
-        },
-
         emailSent,
 
-        emailError:
-          emailErrorMessage,
-
-        dashboardUrl:
-          process.env
-            .NEXT_PUBLIC_APP_URL ??
-          null,
+        emailError,
       },
       {
         status: 201,
@@ -761,7 +995,7 @@ export async function POST(
     );
 
     /* ========================================================
-       FINAL AUTH ROLLBACK
+       FINAL ROLLBACK
     ======================================================== */
 
     if (
@@ -778,7 +1012,7 @@ export async function POST(
         rollbackError
       ) {
         console.error(
-          'Final rollback failed:',
+          'Final Auth rollback failed:',
           rollbackError,
         );
       }
