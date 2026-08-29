@@ -2186,6 +2186,10 @@ export async function deleteWebsiteRequest(
    TEAM
 ============================================================ */
 
+/* ============================================================
+   TEAM
+============================================================ */
+
 export async function fetchTeam(): Promise<
   TeamMember[]
 > {
@@ -2211,6 +2215,11 @@ export async function fetchTeam(): Promise<
     );
 
   if (error) {
+    console.error(
+      'Failed to fetch team:',
+      error,
+    );
+
     throw error;
   }
 
@@ -2221,83 +2230,228 @@ export async function fetchTeam(): Promise<
   );
 }
 
+/* ============================================================
+   CREATE TEAM USER
+============================================================ */
+
 export async function insertTeamMember(
   payload: {
     name: string;
     role: string;
     email: string;
-    active_projects: number;
-    tasks_assigned: number;
-    tasks_completed: number;
-    availability: string;
-    utilization: number;
+    password: string;
+    active_projects?: number;
+    tasks_assigned?: number;
+    tasks_completed?: number;
+    availability?: string;
+    utilization?: number;
   },
-) {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from(
-      'team_members',
-    )
-    .insert(payload)
-    .select()
-    .single();
+): Promise<TeamMember> {
+  if (!supabaseConfigured) {
+    throw new Error(
+      'Supabase is not configured.',
+    );
+  }
 
-  if (error) {
-    throw error;
+  const response =
+    await fetch(
+      '/api/team/create-user',
+      {
+        method: 'POST',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify({
+          name:
+            payload.name.trim(),
+
+          role:
+            payload.role.trim(),
+
+          email:
+            payload.email
+              .trim()
+              .toLowerCase(),
+
+          password:
+            payload.password,
+
+          active_projects:
+            Number(
+              payload.active_projects ??
+                0,
+            ),
+
+          tasks_assigned:
+            Number(
+              payload.tasks_assigned ??
+                0,
+            ),
+
+          tasks_completed:
+            Number(
+              payload.tasks_completed ??
+                0,
+            ),
+
+          availability:
+            payload.availability ??
+            'Available',
+
+          utilization:
+            Number(
+              payload.utilization ??
+                0,
+            ),
+        }),
+      },
+    );
+
+  let result:
+    | {
+        teamMember?: any;
+        error?: string;
+      }
+    | null = null;
+
+  try {
+    result =
+      await response.json();
+  } catch {
+    result = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error ??
+        'Failed to create team user.',
+    );
+  }
+
+  if (
+    !result?.teamMember
+  ) {
+    throw new Error(
+      'Team user was created but no team member was returned.',
+    );
   }
 
   return mapTeamMember(
-    data,
+    result.teamMember,
   );
 }
+
+/* ============================================================
+   UPDATE TEAM MEMBER
+============================================================ */
 
 export async function updateTeamMember(
   id: string,
   payload: Record<string, unknown>,
-) {
-  const {
-    data,
-    error,
-  } = await supabase
-    .from(
-      'team_members',
-    )
-    .update(payload)
-    .eq(
-      'id',
-      id,
-    )
-    .select()
-    .single();
+): Promise<TeamMember> {
+  if (!id) {
+    throw new Error(
+      'Team member ID is missing.',
+    );
+  }
 
-  if (error) {
-    throw error;
+  const response =
+    await fetch(
+      `/api/team/${encodeURIComponent(
+        id,
+      )}`,
+      {
+        method: 'PATCH',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+        },
+
+        body: JSON.stringify(
+          payload,
+        ),
+      },
+    );
+
+  let result:
+    | {
+        teamMember?: any;
+        error?: string;
+      }
+    | null = null;
+
+  try {
+    result =
+      await response.json();
+  } catch {
+    result = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error ??
+        'Failed to update team member.',
+    );
+  }
+
+  if (
+    !result?.teamMember
+  ) {
+    throw new Error(
+      'No updated team member was returned.',
+    );
   }
 
   return mapTeamMember(
-    data,
+    result.teamMember,
   );
 }
 
+/* ============================================================
+   DELETE TEAM MEMBER
+============================================================ */
+
 export async function deleteTeamMember(
   id: string,
-) {
-  const {
-    error,
-  } = await supabase
-    .from(
-      'team_members',
-    )
-    .delete()
-    .eq(
-      'id',
-      id,
+): Promise<void> {
+  if (!id) {
+    throw new Error(
+      'Team member ID is missing.',
+    );
+  }
+
+  const response =
+    await fetch(
+      `/api/team/${encodeURIComponent(
+        id,
+      )}`,
+      {
+        method: 'DELETE',
+      },
     );
 
-  if (error) {
-    throw error;
+  let result:
+    | {
+        error?: string;
+      }
+    | null = null;
+
+  try {
+    result =
+      await response.json();
+  } catch {
+    result = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      result?.error ??
+        'Failed to delete team member.',
+    );
   }
 }
 
