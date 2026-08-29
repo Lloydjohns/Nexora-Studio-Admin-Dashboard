@@ -17,17 +17,6 @@ import {
 } from 'lucide-react';
 
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
-
-import {
   DashboardShell,
   PageHeader,
 } from '@/components/dashboard-shell';
@@ -140,8 +129,7 @@ interface MemberForm {
   activeProjects: string;
   tasksAssigned: string;
   tasksCompleted: string;
-  availability:
-    typeof availabilityOptions[number];
+  availability: typeof availabilityOptions[number];
   utilization: number;
 }
 
@@ -210,9 +198,9 @@ export default function TeamPage() {
   const [
     editId,
     setEditId,
-  ] = React.useState<
-    string | null
-  >(null);
+  ] = React.useState<string | null>(
+    null,
+  );
 
   const [
     submitting,
@@ -239,28 +227,25 @@ export default function TeamPage() {
   const [
     copiedField,
     setCopiedField,
-  ] = React.useState<
-    string | null
-  >(null);
+  ] = React.useState<string | null>(
+    null,
+  );
 
   const [
     createdCredentials,
     setCreatedCredentials,
-  ] =
-    React.useState<CreatedCredentials | null>(
-      null,
-    );
+  ] = React.useState<CreatedCredentials | null>(
+    null,
+  );
 
   /* ==========================================================
      DATA
   ========================================================== */
 
-  const allMembers =
-    team ?? [];
+  const allMembers = team ?? [];
 
   /*
-   * Active members are used for the average utilization KPI.
-   * Members on leave are excluded from the average.
+   * Members on leave are excluded from the average utilization.
    */
   const activeMembers =
     allMembers.filter(
@@ -275,10 +260,7 @@ export default function TeamPage() {
 
   const totalProjects =
     allMembers.reduce(
-      (
-        total,
-        member,
-      ) =>
+      (total, member) =>
         total +
         (Number(
           member.activeProjects,
@@ -288,10 +270,7 @@ export default function TeamPage() {
 
   const totalTasks =
     allMembers.reduce(
-      (
-        total,
-        member,
-      ) =>
+      (total, member) =>
         total +
         (Number(
           member.tasksAssigned,
@@ -300,14 +279,10 @@ export default function TeamPage() {
     );
 
   const avgUtilization =
-    activeMembers.length >
-    0
+    activeMembers.length > 0
       ? Math.round(
           activeMembers.reduce(
-            (
-              total,
-              member,
-            ) =>
+            (total, member) =>
               total +
               (Number(
                 member.utilization,
@@ -322,14 +297,15 @@ export default function TeamPage() {
      WORKLOAD DISTRIBUTION DATA
      
      IMPORTANT:
-     Use ALL team members here instead of activeMembers.
+     This uses ALL team members.
      
-     This means:
-     - Available → shown
-     - Busy → shown
-     - On Leave → also shown
+     Available → shown
+     Busy → shown
+     On Leave → shown
      
-     The chart therefore always represents the entire team.
+     The visualization below does NOT depend on Recharts.
+     It uses regular divs + Framer Motion, which makes it
+     much more reliable inside the dashboard grid.
   ========================================================== */
 
   const utilizationData =
@@ -342,77 +318,52 @@ export default function TeamPage() {
       }
 
       return allMembers
-        .map(
-          (
-            member,
-          ) => {
-            const utilization =
+        .map((member) => {
+          const rawUtilization =
+            Number(
+              member.utilization,
+            ) || 0;
+
+          const safeUtilization =
+            Math.min(
+              100,
+              Math.max(
+                0,
+                rawUtilization,
+              ),
+            );
+
+          return {
+            id: member.id,
+
+            name:
+              member.name ||
+              'Unknown',
+
+            utilization:
+              safeUtilization,
+
+            availability:
+              member.availability ||
+              'Unknown',
+
+            role:
+              member.role ||
+              'Team Member',
+
+            activeProjects:
               Number(
-                member.utilization,
-              ) || 0;
+                member.activeProjects,
+              ) || 0,
 
-            const safeUtilization =
-              Math.min(
-                100,
-                Math.max(
-                  0,
-                  utilization,
-                ),
-              );
-
-            let fill =
-              'hsl(142, 71%, 45%)';
-
-            if (
-              safeUtilization >
-              85
-            ) {
-              fill =
-                'hsl(0, 72%, 51%)';
-            } else if (
-              safeUtilization >
-              70
-            ) {
-              fill =
-                'hsl(38, 92%, 50%)';
-            }
-
-            return {
-              id:
-                member.id,
-
-              name:
-                member.name ||
-                'Unknown',
-
-              shortName:
-                member.name
-                  ? member.name
-                      .split(
-                        ' ',
-                      )[0]
-                  : 'Unknown',
-
-              utilization:
-                safeUtilization,
-
-              availability:
-                member.availability ||
-                'Unknown',
-
-              role:
-                member.role ||
-                'Team Member',
-
-              fill,
-            };
-          },
-        )
+            tasksAssigned:
+              Number(
+                member.tasksAssigned,
+              ) || 0,
+          };
+        })
         .sort(
-          (
-            a,
-            b,
-          ) =>
+          (a, b) =>
             b.utilization -
             a.utilization,
         );
@@ -437,6 +388,48 @@ export default function TeamPage() {
       .toUpperCase();
   }
 
+  function getWorkloadColor(
+    utilization: number,
+  ) {
+    if (utilization > 85) {
+      return 'bg-rose-500';
+    }
+
+    if (utilization > 70) {
+      return 'bg-amber-500';
+    }
+
+    return 'bg-emerald-500';
+  }
+
+  function getWorkloadTextColor(
+    utilization: number,
+  ) {
+    if (utilization > 85) {
+      return 'text-rose-600 dark:text-rose-400';
+    }
+
+    if (utilization > 70) {
+      return 'text-amber-600 dark:text-amber-400';
+    }
+
+    return 'text-emerald-600 dark:text-emerald-400';
+  }
+
+  function getWorkloadLabel(
+    utilization: number,
+  ) {
+    if (utilization > 85) {
+      return 'High';
+    }
+
+    if (utilization > 70) {
+      return 'Moderate';
+    }
+
+    return 'Healthy';
+  }
+
   async function copyToClipboard(
     value: string,
     field: string,
@@ -446,18 +439,14 @@ export default function TeamPage() {
         value,
       );
 
-      setCopiedField(
-        field,
-      );
+      setCopiedField(field);
 
       toast.success(
         `${field} copied.`,
       );
 
       setTimeout(() => {
-        setCopiedField(
-          null,
-        );
+        setCopiedField(null);
       }, 1500);
     } catch {
       toast.error(
@@ -520,20 +509,17 @@ export default function TeamPage() {
 
       activeProjects:
         String(
-          member.activeProjects ??
-            0,
+          member.activeProjects ?? 0,
         ),
 
       tasksAssigned:
         String(
-          member.tasksAssigned ??
-            0,
+          member.tasksAssigned ?? 0,
         ),
 
       tasksCompleted:
         String(
-          member.tasksCompleted ??
-            0,
+          member.tasksCompleted ?? 0,
         ),
 
       availability:
@@ -557,18 +543,14 @@ export default function TeamPage() {
   ) {
     event.preventDefault();
 
-    if (
-      !form.name.trim()
-    ) {
+    if (!form.name.trim()) {
       toast.error(
         'Name is required.',
       );
       return;
     }
 
-    if (
-      !form.email.trim()
-    ) {
+    if (!form.email.trim()) {
       toast.error(
         'Email is required.',
       );
@@ -639,7 +621,9 @@ export default function TeamPage() {
         );
 
         setOpen(false);
+
         setEditId(null);
+
         setForm({
           ...emptyForm,
         });
@@ -771,10 +755,13 @@ export default function TeamPage() {
       ====================================================== */
 
       setOpen(false);
+
       setEditId(null);
+
       setForm({
         ...emptyForm,
       });
+
       setShowPassword(false);
 
       refetch();
@@ -845,7 +832,9 @@ export default function TeamPage() {
         editId === id
       ) {
         setOpen(false);
+
         setEditId(null);
+
         setForm({
           ...emptyForm,
         });
@@ -900,9 +889,7 @@ export default function TeamPage() {
           value={String(
             allMembers.length,
           )}
-          icon={
-            UsersRound
-          }
+          icon={UsersRound}
           index={0}
         />
 
@@ -913,9 +900,7 @@ export default function TeamPage() {
           )}
           delta="+3"
           trend="up"
-          icon={
-            Briefcase
-          }
+          icon={Briefcase}
           accent="text-amber-600 bg-amber-100 dark:bg-amber-500/15 dark:text-amber-400"
           index={1}
         />
@@ -927,9 +912,7 @@ export default function TeamPage() {
           )}
           delta="+8"
           trend="up"
-          icon={
-            CheckSquare
-          }
+          icon={CheckSquare}
           accent="text-blue-600 bg-blue-100 dark:bg-blue-500/15 dark:text-blue-400"
           index={2}
         />
@@ -939,9 +922,7 @@ export default function TeamPage() {
           value={`${avgUtilization}%`}
           delta="+4%"
           trend="up"
-          icon={
-            TrendingUp
-          }
+          icon={TrendingUp}
           accent="text-violet-600 bg-violet-100 dark:bg-violet-500/15 dark:text-violet-400"
           index={3}
         />
@@ -952,6 +933,7 @@ export default function TeamPage() {
       ====================================================== */}
 
       <div className="mt-6 grid min-w-0 gap-4 lg:grid-cols-3">
+
         {/* ====================================================
            TEAM MEMBERS
         ==================================================== */}
@@ -1117,17 +1099,11 @@ export default function TeamPage() {
                               <div
                                 className={cn(
                                   'h-full rounded-full',
-                                  Number(
-                                    member.utilization,
-                                  ) >
-                                    85
-                                    ? 'bg-rose-500'
-                                    : Number(
-                                          member.utilization,
-                                        ) >
-                                        70
-                                      ? 'bg-amber-500'
-                                      : 'bg-emerald-500',
+                                  getWorkloadColor(
+                                    Number(
+                                      member.utilization,
+                                    ) || 0,
+                                  ),
                                 )}
                                 style={{
                                   width: `${Math.min(
@@ -1147,8 +1123,7 @@ export default function TeamPage() {
                             <span className="text-xs tabular-nums text-muted-foreground">
                               {
                                 member.utilization
-                              }
-                              %
+                              }%
                             </span>
                           </div>
                         </TableCell>
@@ -1189,149 +1164,236 @@ export default function TeamPage() {
         </Card>
 
         {/* ====================================================
-           WORKLOAD CHART
+           WORKLOAD DISTRIBUTION
         ==================================================== */}
 
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
-            <CardTitle className="text-base">
-              Workload Distribution
-            </CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">
+                Workload Distribution
+              </CardTitle>
+
+              {!loading &&
+                utilizationData.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px]"
+                  >
+                    {utilizationData.length}{' '}
+                    {utilizationData.length ===
+                    1
+                      ? 'Member'
+                      : 'Members'}
+                  </Badge>
+                )}
+            </div>
           </CardHeader>
 
-          <CardContent className="min-w-0">
+          <CardContent>
             {loading ? (
-              <div className="flex h-[280px] items-center justify-center">
-                <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+              <div className="space-y-5 py-4">
+                {Array.from({
+                  length: 4,
+                }).map(
+                  (_, index) => (
+                    <div
+                      key={
+                        index
+                      }
+                      className="space-y-2"
+                    >
+                      <div className="flex justify-between">
+                        <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+
+                        <div className="h-3 w-10 animate-pulse rounded bg-muted" />
+                      </div>
+
+                      <div className="h-2.5 w-full animate-pulse rounded-full bg-muted" />
+                    </div>
+                  ),
+                )}
               </div>
             ) : utilizationData.length ===
               0 ? (
-              <div className="flex h-[280px] items-center justify-center text-center text-sm text-muted-foreground">
-                No workload data available.
+              <div className="flex min-h-[280px] items-center justify-center text-center text-sm text-muted-foreground">
+                <div>
+                  <p>
+                    No workload data available.
+                  </p>
+
+                  <p className="mt-1 text-xs">
+                    Add a team member or update
+                    utilization to see workload.
+                  </p>
+                </div>
               </div>
             ) : (
-              <div className="h-[280px] w-full min-w-0">
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                  minWidth={0}
-                  minHeight={0}
-                >
-                  <BarChart
-                    data={
-                      utilizationData
-                    }
-                    layout="vertical"
-                    margin={{
-                      top: 5,
-                      right: 15,
-                      left: 0,
-                      bottom: 5,
-                    }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      horizontal={
-                        false
-                      }
-                    />
-
-                    <XAxis
-                      type="number"
-                      domain={[
-                        0,
+              <div className="space-y-5 py-2">
+                {utilizationData.map(
+                  (
+                    member,
+                  ) => {
+                    const utilization =
+                      Math.min(
                         100,
-                      ]}
-                      tick={{
-                        fontSize: 11,
-                      }}
-                      stroke="hsl(var(--muted-foreground))"
-                      tickLine={
-                        false
-                      }
-                      axisLine={
-                        false
-                      }
-                      unit="%"
-                    />
-
-                    <YAxis
-                      type="category"
-                      dataKey="shortName"
-                      tick={{
-                        fontSize: 11,
-                      }}
-                      stroke="hsl(var(--muted-foreground))"
-                      tickLine={
-                        false
-                      }
-                      axisLine={
-                        false
-                      }
-                      width={65}
-                    />
-
-                    <Tooltip
-                      cursor={{
-                        fill: 'hsl(var(--muted))',
-                      }}
-                      contentStyle={{
-                        borderRadius:
-                          '8px',
-                        border:
-                          '1px solid hsl(var(--border))',
-                        backgroundColor:
-                          'hsl(var(--background))',
-                        fontSize:
-                          '12px',
-                      }}
-                      formatter={(
-                        value,
-                      ) => [
-                        `${value}%`,
-                        'Utilization',
-                      ]}
-                      labelFormatter={(
-                        label,
-                      ) =>
-                        String(
-                          label,
-                        )
-                      }
-                    />
-
-                    <Bar
-                      dataKey="utilization"
-                      radius={[
-                        0,
-                        4,
-                        4,
-                        0,
-                      ]}
-                      maxBarSize={28}
-                    >
-                      {utilizationData.map(
-                        (
-                          entry,
-                          index,
-                        ) => (
-                          <Cell
-                            key={
-                              entry.id ||
-                              index
-                            }
-                            fill={
-                              entry.fill
-                            }
-                          />
+                        Math.max(
+                          0,
+                          Number(
+                            member.utilization,
+                          ) || 0,
                         ),
-                      )}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                      );
+
+                    return (
+                      <div
+                        key={
+                          member.id
+                        }
+                        className="space-y-2"
+                      >
+                        {/* MEMBER HEADER */}
+
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <Avatar
+                              initials={getInitials(
+                                member.name,
+                              )}
+                              className="h-8 w-8 shrink-0"
+                            />
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {
+                                  member.name
+                                }
+                              </p>
+
+                              <p className="truncate text-[10px] text-muted-foreground">
+                                {
+                                  member.role
+                                }
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 text-right">
+                            <p
+                              className={cn(
+                                'text-sm font-semibold tabular-nums',
+                                getWorkloadTextColor(
+                                  utilization,
+                                ),
+                              )}
+                            >
+                              {
+                                utilization
+                              }%
+                            </p>
+
+                            <p className="text-[10px] text-muted-foreground">
+                              {
+                                getWorkloadLabel(
+                                  utilization,
+                                )
+                              }
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* PROGRESS BAR */}
+
+                        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                          <motion.div
+                            initial={{
+                              width: 0,
+                            }}
+                            animate={{
+                              width: `${utilization}%`,
+                            }}
+                            transition={{
+                              duration:
+                                0.6,
+                              ease: 'easeOut',
+                            }}
+                            className={cn(
+                              'h-full rounded-full',
+                              getWorkloadColor(
+                                utilization,
+                              ),
+                            )}
+                          />
+                        </div>
+
+                        {/* DETAILS */}
+
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>
+                            {
+                              member.activeProjects
+                            }{' '}
+                            {member.activeProjects ===
+                            1
+                              ? 'project'
+                              : 'projects'}
+                          </span>
+
+                          <span>
+                            {
+                              member.tasksAssigned
+                            }{' '}
+                            {member.tasksAssigned ===
+                            1
+                              ? 'task'
+                              : 'tasks'}
+                          </span>
+
+                          <span>
+                            {
+                              member.availability
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
               </div>
             )}
+
+            {/* LEGEND */}
+
+            {!loading &&
+              utilizationData.length > 0 && (
+                <div className="mt-6 border-t pt-4">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+
+                      <span className="text-[10px] text-muted-foreground">
+                        Healthy ≤ 70%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+
+                      <span className="text-[10px] text-muted-foreground">
+                        Moderate 71–85%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+
+                      <span className="text-[10px] text-muted-foreground">
+                        High &gt; 85%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
           </CardContent>
         </Card>
       </div>
@@ -1448,9 +1510,7 @@ export default function TeamPage() {
               ...emptyForm,
             });
 
-            setShowPassword(
-              false,
-            );
+            setShowPassword(false);
           }
         }}
       >
@@ -1559,9 +1619,7 @@ export default function TeamPage() {
                         })
                       }
                       placeholder="Create initial password"
-                      minLength={
-                        8
-                      }
+                      minLength={8}
                       required
                       className="pr-10"
                     />
@@ -1791,15 +1849,9 @@ export default function TeamPage() {
                   value={[
                     form.utilization,
                   ]}
-                  min={
-                    0
-                  }
-                  max={
-                    100
-                  }
-                  step={
-                    5
-                  }
+                  min={0}
+                  max={100}
+                  step={5}
                   onValueChange={(
                     values,
                   ) =>
@@ -1811,6 +1863,12 @@ export default function TeamPage() {
                     })
                   }
                 />
+
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>0%</span>
+                  <span>50%</span>
+                  <span>100%</span>
+                </div>
               </div>
             </div>
 
@@ -1849,13 +1907,9 @@ export default function TeamPage() {
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  setOpen(
-                    false,
-                  );
+                  setOpen(false);
 
-                  setEditId(
-                    null,
-                  );
+                  setEditId(null);
 
                   setForm({
                     ...emptyForm,
@@ -1879,7 +1933,9 @@ export default function TeamPage() {
                 }
               >
                 {submitting
-                  ? 'Creating...'
+                  ? editId
+                    ? 'Updating...'
+                    : 'Creating...'
                   : editId
                     ? 'Update Member'
                     : 'Create Account'}
