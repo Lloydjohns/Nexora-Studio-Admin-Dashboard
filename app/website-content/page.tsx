@@ -1,6 +1,7 @@
-'use client'
+'use client';
 
-import * as React from 'react'
+import * as React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
   Search,
@@ -16,24 +17,22 @@ import {
   Package,
   HelpCircle,
   Save,
-} from 'lucide-react'
+} from 'lucide-react';
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { DashboardShell, PageHeader } from '@/components/dashboard-shell';
 
-import { DashboardShell, PageHeader } from '@/components/dashboard-shell'
-
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@/components/ui/tabs'
+} from '@/components/ui/tabs';
 
 import {
   Dialog,
@@ -41,23 +40,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
+} from '@/components/ui/dialog';
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge';
 
-import { Badge } from '@/components/ui/badge'
+import { supabase } from '@/lib/supabase';
 
-import { supabase } from '@/lib/supabase'
-
-import { toast } from 'sonner'
-
-import { cn } from '@/lib/utils'
+import { toast } from 'sonner';
 
 /* ============================================================
    TYPES
@@ -68,25 +57,25 @@ type ContentType =
   | 'sections'
   | 'services'
   | 'products'
-  | 'faqs'
+  | 'faqs';
 
-type WebsiteContentRow = Record<string, any> & {
-  id: string
-}
+type WebsiteContentRow = {
+  id: string;
+  [key: string]: any;
+};
+
+type TableConfig = {
+  table: string;
+  label: string;
+  singular: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
 
 /* ============================================================
    TABLE CONFIG
 ============================================================ */
 
-const tableConfig: Record<
-  ContentType,
-  {
-    table: string
-    label: string
-    singular: string
-    icon: React.ComponentType<{ className?: string }>
-  }
-> = {
+const tableConfig: Record<ContentType, TableConfig> = {
   pages: {
     table: 'website_pages',
     label: 'Pages',
@@ -121,13 +110,13 @@ const tableConfig: Record<
     singular: 'FAQ',
     icon: HelpCircle,
   },
-}
+};
 
 /* ============================================================
    EMPTY FORMS
 ============================================================ */
 
-const emptyForms = {
+const emptyForms: Record<ContentType, Record<string, any>> = {
   pages: {
     title: '',
     slug: '',
@@ -172,58 +161,87 @@ const emptyForms = {
     sort_order: '0',
     is_published: false,
   },
-}
+};
 
 /* ============================================================
    HELPERS
 ============================================================ */
 
-function formatDate(value: unknown) {
-  if (!value) return '—'
+function formatDate(value: unknown): string {
+  if (!value) {
+    return '—';
+  }
 
   try {
-    return new Date(String(value)).toLocaleDateString(
-      'en-PH',
-      {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      },
-    )
+    const date = new Date(String(value));
+
+    if (Number.isNaN(date.getTime())) {
+      return '—';
+    }
+
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   } catch {
-    return '—'
+    return '—';
   }
 }
 
 function getDisplayTitle(
   type: ContentType,
   item: WebsiteContentRow,
-) {
+): string {
   if (type === 'pages') {
-    return item.title || item.name || item.slug || 'Untitled page'
+    return (
+      item.title ||
+      item.name ||
+      item.slug ||
+      'Untitled page'
+    );
   }
 
   if (type === 'sections') {
-    return item.title || item.name || item.slug || 'Untitled section'
+    return (
+      item.title ||
+      item.name ||
+      item.slug ||
+      'Untitled section'
+    );
   }
 
   if (type === 'services') {
-    return item.name || item.title || item.slug || 'Untitled service'
+    return (
+      item.name ||
+      item.title ||
+      item.slug ||
+      'Untitled service'
+    );
   }
 
   if (type === 'products') {
-    return item.name || item.title || item.slug || 'Untitled product'
+    return (
+      item.name ||
+      item.title ||
+      item.slug ||
+      'Untitled product'
+    );
   }
 
-  return item.question || item.title || 'Untitled FAQ'
+  return (
+    item.question ||
+    item.title ||
+    'Untitled FAQ'
+  );
 }
 
 function getSecondaryText(
   type: ContentType,
   item: WebsiteContentRow,
-) {
+): string {
   if (type === 'faqs') {
-    return item.answer || ''
+    return item.answer || '';
   }
 
   return (
@@ -231,16 +249,26 @@ function getSecondaryText(
     item.content ||
     item.slug ||
     ''
-  )
+  );
 }
 
-function isPublished(item: WebsiteContentRow) {
+function isPublished(
+  item: WebsiteContentRow,
+): boolean {
   return (
     item.is_published === true ||
     item.published === true ||
     item.status === 'published' ||
     item.status === 'Published'
-  )
+  );
+}
+
+function createEmptyForm(
+  type: ContentType,
+): Record<string, any> {
+  return {
+    ...emptyForms[type],
+  };
 }
 
 /* ============================================================
@@ -249,7 +277,7 @@ function isPublished(item: WebsiteContentRow) {
 
 export default function WebsiteContentPage() {
   const [activeTab, setActiveTab] =
-    React.useState<ContentType>('pages')
+    React.useState<ContentType>('pages');
 
   const [data, setData] = React.useState<
     Record<ContentType, WebsiteContentRow[]>
@@ -259,42 +287,42 @@ export default function WebsiteContentPage() {
     services: [],
     products: [],
     faqs: [],
-  })
+  });
 
   const [loading, setLoading] =
-    React.useState(false)
+    React.useState<boolean>(false);
 
   const [search, setSearch] =
-    React.useState('')
+    React.useState<string>('');
 
   const [dialogOpen, setDialogOpen] =
-    React.useState(false)
+    React.useState<boolean>(false);
 
   const [editingItem, setEditingItem] =
-    React.useState<WebsiteContentRow | null>(null)
+    React.useState<WebsiteContentRow | null>(null);
 
   const [saving, setSaving] =
-    React.useState(false)
+    React.useState<boolean>(false);
 
   const [deletingId, setDeletingId] =
-    React.useState<string | null>(null)
+    React.useState<string | null>(null);
 
   const [publishingId, setPublishingId] =
-    React.useState<string | null>(null)
+    React.useState<string | null>(null);
 
   const [form, setForm] =
-    React.useState<any>({
-      ...emptyForms.pages,
-    })
+    React.useState<Record<string, any>>(
+      createEmptyForm('pages'),
+    );
 
   /* ==========================================================
-     FETCH
+     FETCH ONE TABLE
   ========================================================== */
 
   async function fetchTable(
     type: ContentType,
-  ) {
-    const config = tableConfig[type]
+  ): Promise<void> {
+    const config = tableConfig[type];
 
     const { data: rows, error } =
       await supabase
@@ -302,34 +330,40 @@ export default function WebsiteContentPage() {
         .select('*')
         .order('created_at', {
           ascending: false,
-        })
+        });
 
     if (error) {
-      throw error
+      throw error;
     }
 
     setData((current) => ({
       ...current,
-      [type]: rows || [],
-    }))
+      [type]: (rows || []) as WebsiteContentRow[],
+    }));
   }
 
-  async function fetchAll() {
-    setLoading(true)
+  /* ==========================================================
+     FETCH ALL
+  ========================================================== */
+
+  async function fetchAll(): Promise<void> {
+    setLoading(true);
 
     try {
+      const types = Object.keys(
+        tableConfig,
+      ) as ContentType[];
+
       await Promise.all(
-        (
-          Object.keys(
-            tableConfig,
-          ) as ContentType[]
-        ).map(fetchTable),
-      )
+        types.map((type) =>
+          fetchTable(type),
+        ),
+      );
     } catch (error: any) {
       console.error(
         'WEBSITE CONTENT FETCH ERROR:',
         error,
-      )
+      );
 
       toast.error(
         'Failed to load website content',
@@ -338,72 +372,73 @@ export default function WebsiteContentPage() {
             error?.message ||
             'Unable to load content from Supabase.',
         },
-      )
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   React.useEffect(() => {
-    fetchAll()
-  }, [])
+    void fetchAll();
+  }, []);
 
   /* ==========================================================
      FILTER
   ========================================================== */
 
-  const filteredItems = React.useMemo(() => {
-    const items = data[activeTab]
+  const filteredItems =
+    React.useMemo<WebsiteContentRow[]>(() => {
+      const items = data[activeTab];
 
-    const query =
-      search.trim().toLowerCase()
+      const query =
+        search.trim().toLowerCase();
 
-    if (!query) {
-      return items
-    }
+      if (!query) {
+        return items;
+      }
 
-    return items.filter((item) => {
-      return Object.values(item).some(
-        (value) => {
-          if (
-            value === null ||
-            value === undefined
-          ) {
-            return false
-          }
+      return items.filter((item) => {
+        return Object.values(item).some(
+          (value) => {
+            if (
+              value === null ||
+              value === undefined
+            ) {
+              return false;
+            }
 
-          if (
-            typeof value === 'object'
-          ) {
-            return JSON.stringify(value)
+            if (
+              typeof value === 'object'
+            ) {
+              try {
+                return JSON.stringify(value)
+                  .toLowerCase()
+                  .includes(query);
+              } catch {
+                return false;
+              }
+            }
+
+            return String(value)
               .toLowerCase()
-              .includes(query)
-          }
-
-          return String(value)
-            .toLowerCase()
-            .includes(query)
-        },
-      )
-    })
-  }, [
-    data,
-    activeTab,
-    search,
-  ])
+              .includes(query);
+          },
+        );
+      });
+    }, [data, activeTab, search]);
 
   /* ==========================================================
      OPEN ADD
   ========================================================== */
 
-  function openAdd() {
-    setEditingItem(null)
+  function openAdd(): void {
+    setEditingItem(null);
 
-    setForm({
-      ...emptyForms[activeTab],
-    })
+    setForm(
+      createEmptyForm(activeTab),
+    );
 
-    setDialogOpen(true)
+    setDialogOpen(true);
   }
 
   /* ==========================================================
@@ -412,8 +447,8 @@ export default function WebsiteContentPage() {
 
   function openEdit(
     item: WebsiteContentRow,
-  ) {
-    setEditingItem(item)
+  ): void {
+    setEditingItem(item);
 
     if (activeTab === 'pages') {
       setForm({
@@ -421,31 +456,38 @@ export default function WebsiteContentPage() {
         slug: item.slug || '',
         description:
           item.description || '',
-        content: item.content || '',
+        content:
+          item.content || '',
         is_published:
           item.is_published === true,
-      })
-    }
-
-    if (activeTab === 'sections') {
+      });
+    } else if (
+      activeTab === 'sections'
+    ) {
       setForm({
-        page_id: item.page_id || '',
-        title: item.title || '',
-        slug: item.slug || '',
-        content: item.content || '',
+        page_id:
+          item.page_id || '',
+        title:
+          item.title || '',
+        slug:
+          item.slug || '',
+        content:
+          item.content || '',
         image_url:
           item.image_url || '',
         sort_order:
           String(item.sort_order ?? 0),
         is_published:
           item.is_published === true,
-      })
-    }
-
-    if (activeTab === 'services') {
+      });
+    } else if (
+      activeTab === 'services'
+    ) {
       setForm({
-        name: item.name || '',
-        slug: item.slug || '',
+        name:
+          item.name || '',
+        slug:
+          item.slug || '',
         description:
           item.description || '',
         price:
@@ -454,22 +496,22 @@ export default function WebsiteContentPage() {
             ? String(item.price)
             : '',
         features:
-          Array.isArray(
-            item.features,
-          )
+          Array.isArray(item.features)
             ? item.features.join('\n')
             : item.features || '',
         image_url:
           item.image_url || '',
         is_published:
           item.is_published === true,
-      })
-    }
-
-    if (activeTab === 'products') {
+      });
+    } else if (
+      activeTab === 'products'
+    ) {
       setForm({
-        name: item.name || '',
-        slug: item.slug || '',
+        name:
+          item.name || '',
+        slug:
+          item.slug || '',
         description:
           item.description || '',
         price:
@@ -483,10 +525,8 @@ export default function WebsiteContentPage() {
           item.download_url || '',
         is_published:
           item.is_published === true,
-      })
-    }
-
-    if (activeTab === 'faqs') {
+      });
+    } else {
       setForm({
         question:
           item.question || '',
@@ -496,10 +536,10 @@ export default function WebsiteContentPage() {
           String(item.sort_order ?? 0),
         is_published:
           item.is_published === true,
-      })
+      });
     }
 
-    setDialogOpen(true)
+    setDialogOpen(true);
   }
 
   /* ==========================================================
@@ -509,11 +549,11 @@ export default function WebsiteContentPage() {
   function updateForm(
     key: string,
     value: any,
-  ) {
-    setForm((current: any) => ({
+  ): void {
+    setForm((current) => ({
       ...current,
       [key]: value,
-    }))
+    }));
   }
 
   /* ==========================================================
@@ -521,237 +561,290 @@ export default function WebsiteContentPage() {
   ========================================================== */
 
   async function handleSave(
-    event: React.FormEvent,
-  ) {
-    event.preventDefault()
+    event: React.FormEvent<HTMLFormElement>,
+  ): Promise<void> {
+    event.preventDefault();
 
-    setSaving(true)
+    if (saving) {
+      return;
+    }
+
+    setSaving(true);
 
     try {
-      let payload: Record<
-        string,
-        any
-      > = {}
+      let payload: Record<string, any> = {};
 
       /* ------------------------------------------------------
          PAGES
       ------------------------------------------------------ */
 
       if (activeTab === 'pages') {
-        if (!form.title.trim()) {
+        const title =
+          String(form.title || '').trim();
+
+        if (!title) {
           toast.error(
             'Page title is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
         payload = {
-          title: form.title.trim(),
-          slug: form.slug.trim(),
+          title,
+          slug:
+            String(
+              form.slug || '',
+            ).trim(),
           description:
-            form.description.trim() ||
-            null,
+            String(
+              form.description || '',
+            ).trim() || null,
           content:
-            form.content.trim() ||
-            null,
+            String(
+              form.content || '',
+            ).trim() || null,
           is_published:
-            form.is_published,
-        }
+            Boolean(form.is_published),
+        };
       }
 
       /* ------------------------------------------------------
          SECTIONS
       ------------------------------------------------------ */
 
-      if (activeTab === 'sections') {
-        if (!form.title.trim()) {
+      else if (
+        activeTab === 'sections'
+      ) {
+        const title =
+          String(form.title || '').trim();
+
+        if (!title) {
           toast.error(
             'Section title is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
         payload = {
           page_id:
-            form.page_id.trim() ||
-            null,
-          title: form.title.trim(),
-          slug: form.slug.trim(),
+            String(
+              form.page_id || '',
+            ).trim() || null,
+          title,
+          slug:
+            String(
+              form.slug || '',
+            ).trim(),
           content:
-            form.content.trim() ||
-            null,
+            String(
+              form.content || '',
+            ).trim() || null,
           image_url:
-            form.image_url.trim() ||
-            null,
+            String(
+              form.image_url || '',
+            ).trim() || null,
           sort_order:
             Number(form.sort_order) || 0,
           is_published:
-            form.is_published,
-        }
+            Boolean(form.is_published),
+        };
       }
 
       /* ------------------------------------------------------
          SERVICES
       ------------------------------------------------------ */
 
-      if (activeTab === 'services') {
-        if (!form.name.trim()) {
+      else if (
+        activeTab === 'services'
+      ) {
+        const name =
+          String(form.name || '').trim();
+
+        if (!name) {
           toast.error(
             'Service name is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
         payload = {
-          name: form.name.trim(),
-          slug: form.slug.trim(),
+          name,
+          slug:
+            String(
+              form.slug || '',
+            ).trim(),
           description:
-            form.description.trim() ||
-            null,
+            String(
+              form.description || '',
+            ).trim() || null,
           price:
-            form.price === ''
+            form.price === '' ||
+            form.price === null ||
+            form.price === undefined
               ? 0
               : Number(form.price),
-          features: form.features
-            .split('\n')
-            .map(
-              (value: string) =>
-                value.trim(),
+          features:
+            String(
+              form.features || '',
             )
-            .filter(Boolean),
+              .split('\n')
+              .map(
+                (value: string) =>
+                  value.trim(),
+              )
+              .filter(Boolean),
           image_url:
-            form.image_url.trim() ||
-            null,
+            String(
+              form.image_url || '',
+            ).trim() || null,
           is_published:
-            form.is_published,
-        }
+            Boolean(form.is_published),
+        };
       }
 
       /* ------------------------------------------------------
          PRODUCTS
       ------------------------------------------------------ */
 
-      if (activeTab === 'products') {
-        if (!form.name.trim()) {
+      else if (
+        activeTab === 'products'
+      ) {
+        const name =
+          String(form.name || '').trim();
+
+        if (!name) {
           toast.error(
             'Product name is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
         payload = {
-          name: form.name.trim(),
-          slug: form.slug.trim(),
+          name,
+          slug:
+            String(
+              form.slug || '',
+            ).trim(),
           description:
-            form.description.trim() ||
-            null,
+            String(
+              form.description || '',
+            ).trim() || null,
           price:
-            form.price === ''
+            form.price === '' ||
+            form.price === null ||
+            form.price === undefined
               ? 0
               : Number(form.price),
           image_url:
-            form.image_url.trim() ||
-            null,
+            String(
+              form.image_url || '',
+            ).trim() || null,
           download_url:
-            form.download_url.trim() ||
-            null,
+            String(
+              form.download_url || '',
+            ).trim() || null,
           is_published:
-            form.is_published,
-        }
+            Boolean(form.is_published),
+        };
       }
 
       /* ------------------------------------------------------
          FAQS
       ------------------------------------------------------ */
 
-      if (activeTab === 'faqs') {
-        if (!form.question.trim()) {
+      else {
+        const question =
+          String(
+            form.question || '',
+          ).trim();
+
+        const answer =
+          String(
+            form.answer || '',
+          ).trim();
+
+        if (!question) {
           toast.error(
             'Question is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
-        if (!form.answer.trim()) {
+        if (!answer) {
           toast.error(
             'Answer is required.',
-          )
-          setSaving(false)
-          return
+          );
+          return;
         }
 
         payload = {
-          question:
-            form.question.trim(),
-          answer:
-            form.answer.trim(),
+          question,
+          answer,
           sort_order:
             Number(form.sort_order) || 0,
           is_published:
-            form.is_published,
-        }
+            Boolean(form.is_published),
+        };
       }
 
+      const table =
+        tableConfig[activeTab].table;
+
       /* ------------------------------------------------------
-         UPDATE / INSERT
+         UPDATE
       ------------------------------------------------------ */
 
       if (editingItem) {
         const { error } =
           await supabase
-            .from(
-              tableConfig[activeTab]
-                .table,
-            )
+            .from(table)
             .update(payload)
             .eq(
               'id',
               editingItem.id,
-            )
+            );
 
         if (error) {
-          throw error
+          throw error;
         }
 
         toast.success(
           `${tableConfig[activeTab].singular} updated successfully.`,
-        )
-      } else {
+        );
+      }
+
+      /* ------------------------------------------------------
+         INSERT
+      ------------------------------------------------------ */
+
+      else {
         const { error } =
           await supabase
-            .from(
-              tableConfig[activeTab]
-                .table,
-            )
-            .insert(payload)
+            .from(table)
+            .insert(payload);
 
         if (error) {
-          throw error
+          throw error;
         }
 
         toast.success(
           `${tableConfig[activeTab].singular} added successfully.`,
-        )
+        );
       }
 
-      setDialogOpen(false)
-      setEditingItem(null)
+      setDialogOpen(false);
+      setEditingItem(null);
 
-      setForm({
-        ...emptyForms[activeTab],
-      })
+      setForm(
+        createEmptyForm(activeTab),
+      );
 
-      await fetchTable(activeTab)
+      await fetchTable(activeTab);
     } catch (error: any) {
       console.error(
         'SAVE WEBSITE CONTENT ERROR:',
         error,
-      )
+      );
 
       toast.error(
         `Failed to save ${tableConfig[activeTab].singular.toLowerCase()}`,
@@ -760,9 +853,9 @@ export default function WebsiteContentPage() {
             error?.message ||
             'Unable to save the record.',
         },
-      )
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
@@ -772,22 +865,27 @@ export default function WebsiteContentPage() {
 
   async function handleDelete(
     item: WebsiteContentRow,
-  ) {
+  ): Promise<void> {
     const title =
       getDisplayTitle(
         activeTab,
         item,
-      )
+      );
 
-    if (
-      !window.confirm(
+    const confirmed =
+      window.confirm(
         `Delete "${title}"?\n\nThis action cannot be undone.`,
-      )
-    ) {
-      return
+      );
+
+    if (!confirmed) {
+      return;
     }
 
-    setDeletingId(item.id)
+    if (deletingId) {
+      return;
+    }
+
+    setDeletingId(item.id);
 
     try {
       const { error } =
@@ -800,24 +898,36 @@ export default function WebsiteContentPage() {
           .eq(
             'id',
             item.id,
-          )
+          );
 
       if (error) {
-        throw error
+        throw error;
       }
 
       toast.success(
         `${tableConfig[activeTab].singular} deleted successfully.`,
-      )
+      );
 
-      await fetchTable(
-        activeTab,
-      )
+      setData((current) => ({
+        ...current,
+        [activeTab]:
+          current[activeTab].filter(
+            (row) =>
+              row.id !== item.id,
+          ),
+      }));
+
+      if (
+        editingItem?.id === item.id
+      ) {
+        setEditingItem(null);
+        setDialogOpen(false);
+      }
     } catch (error: any) {
       console.error(
         'DELETE WEBSITE CONTENT ERROR:',
         error,
-      )
+      );
 
       toast.error(
         `Failed to delete ${tableConfig[activeTab].singular.toLowerCase()}`,
@@ -826,9 +936,9 @@ export default function WebsiteContentPage() {
             error?.message ||
             'Unable to delete the record.',
         },
-      )
+      );
     } finally {
-      setDeletingId(null)
+      setDeletingId(null);
     }
   }
 
@@ -838,11 +948,15 @@ export default function WebsiteContentPage() {
 
   async function togglePublished(
     item: WebsiteContentRow,
-  ) {
-    setPublishingId(item.id)
+  ): Promise<void> {
+    if (publishingId) {
+      return;
+    }
+
+    setPublishingId(item.id);
 
     const nextValue =
-      !isPublished(item)
+      !isPublished(item);
 
     try {
       const { error } =
@@ -858,26 +972,37 @@ export default function WebsiteContentPage() {
           .eq(
             'id',
             item.id,
-          )
+          );
 
       if (error) {
-        throw error
+        throw error;
       }
 
       toast.success(
         nextValue
           ? `${tableConfig[activeTab].singular} published.`
           : `${tableConfig[activeTab].singular} unpublished.`,
-      )
+      );
 
-      await fetchTable(
-        activeTab,
-      )
+      setData((current) => ({
+        ...current,
+        [activeTab]:
+          current[activeTab].map(
+            (row) =>
+              row.id === item.id
+                ? {
+                    ...row,
+                    is_published:
+                      nextValue,
+                  }
+                : row,
+          ),
+      }));
     } catch (error: any) {
       console.error(
         'PUBLISH WEBSITE CONTENT ERROR:',
         error,
-      )
+      );
 
       toast.error(
         'Failed to change publish status',
@@ -886,17 +1011,73 @@ export default function WebsiteContentPage() {
             error?.message ||
             'Unable to update publish status.',
         },
-      )
+      );
     } finally {
-      setPublishingId(null)
+      setPublishingId(null);
     }
+  }
+
+  /* ==========================================================
+     RENDER PUBLISH TOGGLE
+  ========================================================== */
+
+  function renderPublishToggle(): React.ReactNode {
+    return (
+      <div className="rounded-xl border border-border bg-muted/30 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">
+              Publish on website
+            </p>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              {form.is_published
+                ? 'This content is visible on the public website.'
+                : 'This content is saved as a draft.'}
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            variant={
+              form.is_published
+                ? 'default'
+                : 'outline'
+            }
+            size="sm"
+            onClick={() =>
+              updateForm(
+                'is_published',
+                !form.is_published,
+              )
+            }
+          >
+            {form.is_published ? (
+              <>
+                <Eye className="mr-1.5 h-4 w-4" />
+                Published
+              </>
+            ) : (
+              <>
+                <EyeOff className="mr-1.5 h-4 w-4" />
+                Draft
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   /* ==========================================================
      RENDER FORM
   ========================================================== */
 
-  function renderForm() {
+  function renderForm(): React.ReactNode {
+    /* --------------------------------------------------------
+       PAGES
+    -------------------------------------------------------- */
+
     if (activeTab === 'pages') {
       return (
         <div className="grid gap-5">
@@ -906,11 +1087,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.title}
-              onChange={(e) =>
+              value={
+                form.title || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'title',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Home"
@@ -923,11 +1106,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.slug}
-              onChange={(e) =>
+              value={
+                form.slug || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'slug',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="home"
@@ -941,12 +1126,12 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.description
+                form.description || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'description',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Page description..."
@@ -960,11 +1145,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Textarea
-              value={form.content}
-              onChange={(e) =>
+              value={
+                form.content || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'content',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Page content..."
@@ -972,22 +1159,18 @@ export default function WebsiteContentPage() {
             />
           </div>
 
-          <PublishToggle
-            value={
-              form.is_published
-            }
-            onChange={(value) =>
-              updateForm(
-                'is_published',
-                value,
-              )
-            }
-          />
+          {renderPublishToggle()}
         </div>
-      )
+      );
     }
 
-    if (activeTab === 'sections') {
+    /* --------------------------------------------------------
+       SECTIONS
+    -------------------------------------------------------- */
+
+    if (
+      activeTab === 'sections'
+    ) {
       return (
         <div className="grid gap-5">
           <div className="grid gap-2">
@@ -996,15 +1179,21 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.page_id}
-              onChange={(e) =>
+              value={
+                form.page_id || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'page_id',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Page UUID"
             />
+
+            <p className="text-xs text-muted-foreground">
+              Enter the UUID of the website page this section belongs to.
+            </p>
           </div>
 
           <div className="grid gap-2">
@@ -1013,11 +1202,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.title}
-              onChange={(e) =>
+              value={
+                form.title || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'title',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Hero Section"
@@ -1030,11 +1221,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.slug}
-              onChange={(e) =>
+              value={
+                form.slug || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'slug',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="hero"
@@ -1047,11 +1240,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Textarea
-              value={form.content}
-              onChange={(e) =>
+              value={
+                form.content || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'content',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Section content..."
@@ -1065,11 +1260,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.image_url}
-              onChange={(e) =>
+              value={
+                form.image_url || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'image_url',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="/images/hero.jpg"
@@ -1084,33 +1281,30 @@ export default function WebsiteContentPage() {
             <Input
               type="number"
               value={
-                form.sort_order
+                form.sort_order ??
+                '0'
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'sort_order',
-                  e.target.value,
+                  event.target.value,
                 )
               }
             />
           </div>
 
-          <PublishToggle
-            value={
-              form.is_published
-            }
-            onChange={(value) =>
-              updateForm(
-                'is_published',
-                value,
-              )
-            }
-          />
+          {renderPublishToggle()}
         </div>
-      )
+      );
     }
 
-    if (activeTab === 'services') {
+    /* --------------------------------------------------------
+       SERVICES
+    -------------------------------------------------------- */
+
+    if (
+      activeTab === 'services'
+    ) {
       return (
         <div className="grid gap-5">
           <div className="grid gap-2">
@@ -1119,11 +1313,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.name}
-              onChange={(e) =>
+              value={
+                form.name || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'name',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Social Media Management"
@@ -1136,11 +1332,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.slug}
-              onChange={(e) =>
+              value={
+                form.slug || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'slug',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="social-media-management"
@@ -1154,14 +1352,15 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.description
+                form.description || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'description',
-                  e.target.value,
+                  event.target.value,
                 )
               }
+              placeholder="Describe this service..."
               rows={5}
             />
           </div>
@@ -1173,11 +1372,13 @@ export default function WebsiteContentPage() {
 
             <Input
               type="number"
-              value={form.price}
-              onChange={(e) =>
+              value={
+                form.price ?? ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'price',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="15000"
@@ -1191,12 +1392,12 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.features
+                form.features || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'features',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder={
@@ -1217,34 +1418,30 @@ export default function WebsiteContentPage() {
 
             <Input
               value={
-                form.image_url
+                form.image_url || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'image_url',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="/images/services/social.jpg"
             />
           </div>
 
-          <PublishToggle
-            value={
-              form.is_published
-            }
-            onChange={(value) =>
-              updateForm(
-                'is_published',
-                value,
-              )
-            }
-          />
+          {renderPublishToggle()}
         </div>
-      )
+      );
     }
 
-    if (activeTab === 'products') {
+    /* --------------------------------------------------------
+       PRODUCTS
+    -------------------------------------------------------- */
+
+    if (
+      activeTab === 'products'
+    ) {
       return (
         <div className="grid gap-5">
           <div className="grid gap-2">
@@ -1253,11 +1450,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.name}
-              onChange={(e) =>
+              value={
+                form.name || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'name',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="Social Media Content Planner"
@@ -1270,11 +1469,13 @@ export default function WebsiteContentPage() {
             </Label>
 
             <Input
-              value={form.slug}
-              onChange={(e) =>
+              value={
+                form.slug || ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'slug',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="social-media-content-planner"
@@ -1288,14 +1489,15 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.description
+                form.description || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'description',
-                  e.target.value,
+                  event.target.value,
                 )
               }
+              placeholder="Describe this product..."
               rows={5}
             />
           </div>
@@ -1307,11 +1509,13 @@ export default function WebsiteContentPage() {
 
             <Input
               type="number"
-              value={form.price}
-              onChange={(e) =>
+              value={
+                form.price ?? ''
+              }
+              onChange={(event) =>
                 updateForm(
                   'price',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="899"
@@ -1325,12 +1529,12 @@ export default function WebsiteContentPage() {
 
             <Input
               value={
-                form.image_url
+                form.image_url || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'image_url',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="/images/products/planner.jpg"
@@ -1344,32 +1548,26 @@ export default function WebsiteContentPage() {
 
             <Input
               value={
-                form.download_url
+                form.download_url || ''
               }
-              onChange={(e) =>
+              onChange={(event) =>
                 updateForm(
                   'download_url',
-                  e.target.value,
+                  event.target.value,
                 )
               }
               placeholder="https://..."
             />
           </div>
 
-          <PublishToggle
-            value={
-              form.is_published
-            }
-            onChange={(value) =>
-              updateForm(
-                'is_published',
-                value,
-              )
-            }
-          />
+          {renderPublishToggle()}
         </div>
-      )
+      );
     }
+
+    /* --------------------------------------------------------
+       FAQS
+    -------------------------------------------------------- */
 
     return (
       <div className="grid gap-5">
@@ -1380,12 +1578,12 @@ export default function WebsiteContentPage() {
 
           <Input
             value={
-              form.question
+              form.question || ''
             }
-            onChange={(e) =>
+            onChange={(event) =>
               updateForm(
                 'question',
-                e.target.value,
+                event.target.value,
               )
             }
             placeholder="How long does a website take?"
@@ -1398,11 +1596,13 @@ export default function WebsiteContentPage() {
           </Label>
 
           <Textarea
-            value={form.answer}
-            onChange={(e) =>
+            value={
+              form.answer || ''
+            }
+            onChange={(event) =>
               updateForm(
                 'answer',
-                e.target.value,
+                event.target.value,
               )
             }
             placeholder="Most websites take..."
@@ -1418,54 +1618,48 @@ export default function WebsiteContentPage() {
           <Input
             type="number"
             value={
-              form.sort_order
+              form.sort_order ??
+              '0'
             }
-            onChange={(e) =>
+            onChange={(event) =>
               updateForm(
                 'sort_order',
-                e.target.value,
+                event.target.value,
               )
             }
           />
         </div>
 
-        <PublishToggle
-          value={
-            form.is_published
-          }
-          onChange={(value) =>
-            updateForm(
-              'is_published',
-              value,
-            )
-          }
-        />
+        {renderPublishToggle()}
       </div>
-    )
+    );
   }
 
   /* ==========================================================
-     MAIN UI
+     ACTIVE CONFIG
   ========================================================== */
 
   const activeConfig =
-    tableConfig[activeTab]
+    tableConfig[activeTab];
 
   const ActiveIcon =
-    activeConfig.icon
+    activeConfig.icon;
+
+  /* ==========================================================
+     RENDER
+  ========================================================== */
 
   return (
     <DashboardShell>
       <PageHeader
-        eyebrow="Website"
         title="Website Content"
         description="Manage your website pages, sections, services, products, and FAQs from one place."
       />
 
-      <div className="space-y-6 p-5 lg:p-8">
-        {/* =====================================================
+      <div className="mt-6 space-y-6">
+        {/* ====================================================
             HEADER CARD
-        ===================================================== */}
+        ==================================================== */}
 
         <Card>
           <CardContent className="p-5">
@@ -1489,7 +1683,9 @@ export default function WebsiteContentPage() {
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   variant="outline"
-                  onClick={fetchAll}
+                  onClick={() =>
+                    void fetchAll()
+                  }
                   disabled={loading}
                 >
                   {loading ? (
@@ -1497,6 +1693,7 @@ export default function WebsiteContentPage() {
                   ) : (
                     <RefreshCw className="mr-2 h-4 w-4" />
                   )}
+
                   Refresh
                 </Button>
 
@@ -1511,17 +1708,18 @@ export default function WebsiteContentPage() {
           </CardContent>
         </Card>
 
-        {/* =====================================================
+        {/* ====================================================
             TABS
-        ===================================================== */}
+        ==================================================== */}
 
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
             setActiveTab(
               value as ContentType,
-            )
-            setSearch('')
+            );
+
+            setSearch('');
           }}
         >
           <div className="overflow-x-auto">
@@ -1553,9 +1751,9 @@ export default function WebsiteContentPage() {
             </TabsList>
           </div>
 
-          {/* ===================================================
-              ALL TAB CONTENTS
-          =================================================== */}
+          {/* ==================================================
+              TAB CONTENT
+          ================================================== */}
 
           {(
             Object.keys(
@@ -1563,10 +1761,15 @@ export default function WebsiteContentPage() {
             ) as ContentType[]
           ).map((type) => {
             const config =
-              tableConfig[type]
+              tableConfig[type];
 
             const Icon =
-              config.icon
+              config.icon;
+
+            const items =
+              type === activeTab
+                ? filteredItems
+                : data[type];
 
             return (
               <TabsContent
@@ -1588,9 +1791,9 @@ export default function WebsiteContentPage() {
                               ? search
                               : ''
                           }
-                          onChange={(e) =>
+                          onChange={(event) =>
                             setSearch(
-                              e.target.value,
+                              event.target.value,
                             )
                           }
                           placeholder={`Search ${config.label.toLowerCase()}...`}
@@ -1599,11 +1802,7 @@ export default function WebsiteContentPage() {
                       </div>
 
                       <div className="text-sm text-muted-foreground">
-                        {activeTab ===
-                        type
-                          ? filteredItems.length
-                          : data[type]
-                              .length}{' '}
+                        {items.length}{' '}
                         {config.label.toLowerCase()}
                       </div>
                     </div>
@@ -1625,8 +1824,11 @@ export default function WebsiteContentPage() {
                             <CardContent className="p-5">
                               <div className="animate-pulse space-y-4">
                                 <div className="h-5 w-1/2 rounded bg-muted" />
+
                                 <div className="h-4 w-full rounded bg-muted" />
+
                                 <div className="h-4 w-3/4 rounded bg-muted" />
+
                                 <div className="h-9 w-full rounded bg-muted" />
                               </div>
                             </CardContent>
@@ -1634,249 +1836,247 @@ export default function WebsiteContentPage() {
                         ),
                       )}
                     </div>
-                  ) : (
-                    <>
-                      {(
-                        activeTab ===
-                        type
-                          ? filteredItems
-                          : data[type]
-                      ).length ===
-                      0 ? (
-                        <Card>
-                          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
-                              <Icon className="h-6 w-6 text-muted-foreground" />
-                            </div>
-
-                            <h3 className="mt-4 font-semibold">
-                              No{' '}
-                              {config.label.toLowerCase()}{' '}
-                              found
-                            </h3>
-
-                            <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                              Add your first{' '}
-                              {config.singular.toLowerCase()}{' '}
-                              to start managing this section of your website.
-                            </p>
-
-                            <Button
-                              className="mt-5"
-                              onClick={
-                                openAdd
-                              }
-                            >
-                              <Plus className="mr-2 h-4 w-4" />
-                              Add{' '}
-                              {
-                                config.singular
-                              }
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ) : (
-                        <div className="grid gap-4 lg:grid-cols-2">
-                          <AnimatePresence>
-                            {(
-                              activeTab ===
-                              type
-                                ? filteredItems
-                                : data[type]
-                            ).map(
-                              (
-                                item,
-                                index,
-                              ) => {
-                                const published =
-                                  isPublished(
-                                    item,
-                                  )
-
-                                return (
-                                  <motion.div
-                                    key={
-                                      item.id
-                                    }
-                                    initial={{
-                                      opacity: 0,
-                                      y: 10,
-                                    }}
-                                    animate={{
-                                      opacity: 1,
-                                      y: 0,
-                                    }}
-                                    exit={{
-                                      opacity: 0,
-                                      y: -10,
-                                    }}
-                                    transition={{
-                                      delay:
-                                        index *
-                                        0.025,
-                                    }}
-                                  >
-                                    <Card className="h-full">
-                                      <CardContent className="p-5">
-                                        <div className="flex items-start justify-between gap-4">
-                                          <div className="flex min-w-0 items-start gap-3">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                              <Icon className="h-5 w-5" />
-                                            </div>
-
-                                            <div className="min-w-0">
-                                              <h3 className="truncate font-semibold">
-                                                {getDisplayTitle(
-                                                  type,
-                                                  item,
-                                                )}
-                                              </h3>
-
-                                              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                                                {getSecondaryText(
-                                                  type,
-                                                  item,
-                                                )}
-                                              </p>
-                                            </div>
-                                          </div>
-
-                                          <Badge
-                                            variant={
-                                              published
-                                                ? 'default'
-                                                : 'secondary'
-                                            }
-                                            className="shrink-0"
-                                          >
-                                            {published
-                                              ? 'Published'
-                                              : 'Draft'}
-                                          </Badge>
-                                        </div>
-
-                                        <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                          {item.slug && (
-                                            <span className="rounded-full bg-muted px-2.5 py-1">
-                                              /{item.slug}
-                                            </span>
-                                          )}
-
-                                          {item.price !==
-                                            undefined &&
-                                            item.price !==
-                                              null && (
-                                              <span className="rounded-full bg-muted px-2.5 py-1">
-                                                ₱
-                                                {Number(
-                                                  item.price,
-                                                ).toLocaleString(
-                                                  'en-PH',
-                                                )}
-                                              </span>
-                                            )}
-
-                                          {item.created_at && (
-                                            <span className="rounded-full bg-muted px-2.5 py-1">
-                                              {formatDate(
-                                                item.created_at,
-                                              )}
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        <div className="mt-5 flex flex-wrap justify-end gap-2">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                              togglePublished(
-                                                item,
-                                              )
-                                            }
-                                            disabled={
-                                              publishingId ===
-                                              item.id
-                                            }
-                                          >
-                                            {publishingId ===
-                                            item.id ? (
-                                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                            ) : published ? (
-                                              <EyeOff className="mr-1.5 h-3.5 w-3.5" />
-                                            ) : (
-                                              <Eye className="mr-1.5 h-3.5 w-3.5" />
-                                            )}
-
-                                            {published
-                                              ? 'Unpublish'
-                                              : 'Publish'}
-                                          </Button>
-
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() =>
-                                              openEdit(
-                                                item,
-                                              )
-                                            }
-                                          >
-                                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                            Edit
-                                          </Button>
-
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="text-destructive hover:text-destructive"
-                                            onClick={() =>
-                                              handleDelete(
-                                                item,
-                                              )
-                                            }
-                                            disabled={
-                                              deletingId ===
-                                              item.id
-                                            }
-                                          >
-                                            {deletingId ===
-                                            item.id ? (
-                                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                            ) : (
-                                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                            )}
-
-                                            Delete
-                                          </Button>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </motion.div>
-                                )
-                              },
-                            )}
-                          </AnimatePresence>
+                  ) : items.length === 0 ? (
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                          <Icon className="h-6 w-6 text-muted-foreground" />
                         </div>
-                      )}
-                    </>
+
+                        <h3 className="mt-4 font-semibold">
+                          No{' '}
+                          {config.label.toLowerCase()}{' '}
+                          found
+                        </h3>
+
+                        <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                          Add your first{' '}
+                          {config.singular.toLowerCase()}{' '}
+                          to start managing this section of your website.
+                        </p>
+
+                        <Button
+                          className="mt-5"
+                          onClick={openAdd}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add{' '}
+                          {config.singular}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <AnimatePresence>
+                        {items.map(
+                          (
+                            item,
+                            index,
+                          ) => {
+                            const published =
+                              isPublished(
+                                item,
+                              );
+
+                            return (
+                              <motion.div
+                                key={
+                                  item.id
+                                }
+                                initial={{
+                                  opacity: 0,
+                                  y: 10,
+                                }}
+                                animate={{
+                                  opacity: 1,
+                                  y: 0,
+                                }}
+                                exit={{
+                                  opacity: 0,
+                                  y: -10,
+                                }}
+                                transition={{
+                                  delay:
+                                    index *
+                                    0.025,
+                                }}
+                              >
+                                <Card className="h-full">
+                                  <CardContent className="p-5">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex min-w-0 items-start gap-3">
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                          <Icon className="h-5 w-5" />
+                                        </div>
+
+                                        <div className="min-w-0">
+                                          <h3 className="truncate font-semibold">
+                                            {getDisplayTitle(
+                                              type,
+                                              item,
+                                            )}
+                                          </h3>
+
+                                          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                                            {getSecondaryText(
+                                              type,
+                                              item,
+                                            )}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <Badge
+                                        variant={
+                                          published
+                                            ? 'default'
+                                            : 'secondary'
+                                        }
+                                        className="shrink-0"
+                                      >
+                                        {published
+                                          ? 'Published'
+                                          : 'Draft'}
+                                      </Badge>
+                                    </div>
+
+                                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                      {item.slug && (
+                                        <span className="rounded-full bg-muted px-2.5 py-1">
+                                          /
+                                          {
+                                            item.slug
+                                          }
+                                        </span>
+                                      )}
+
+                                      {item.price !==
+                                        undefined &&
+                                        item.price !==
+                                          null && (
+                                          <span className="rounded-full bg-muted px-2.5 py-1">
+                                            ₱
+                                            {Number(
+                                              item.price,
+                                            ).toLocaleString(
+                                              'en-PH',
+                                            )}
+                                          </span>
+                                        )}
+
+                                      {item.created_at && (
+                                        <span className="rounded-full bg-muted px-2.5 py-1">
+                                          {formatDate(
+                                            item.created_at,
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="mt-5 flex flex-wrap justify-end gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          void togglePublished(
+                                            item,
+                                          )
+                                        }
+                                        disabled={
+                                          publishingId ===
+                                          item.id
+                                        }
+                                      >
+                                        {publishingId ===
+                                        item.id ? (
+                                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                        ) : published ? (
+                                          <EyeOff className="mr-1.5 h-3.5 w-3.5" />
+                                        ) : (
+                                          <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                        )}
+
+                                        {published
+                                          ? 'Unpublish'
+                                          : 'Publish'}
+                                      </Button>
+
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          openEdit(
+                                            item,
+                                          )
+                                        }
+                                      >
+                                        <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                        Edit
+                                      </Button>
+
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-destructive hover:text-destructive"
+                                        onClick={() =>
+                                          void handleDelete(
+                                            item,
+                                          )
+                                        }
+                                        disabled={
+                                          deletingId ===
+                                          item.id
+                                        }
+                                      >
+                                        {deletingId ===
+                                        item.id ? (
+                                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                        )}
+
+                                        Delete
+                                      </Button>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              </motion.div>
+                            );
+                          },
+                        )}
+                      </AnimatePresence>
+                    </div>
                   )}
                 </div>
               </TabsContent>
-            )
+            );
           })}
         </Tabs>
       </div>
 
-      {/* =======================================================
+      {/* ======================================================
           ADD / EDIT DIALOG
-      ======================================================= */}
+      ====================================================== */}
 
       <Dialog
         open={dialogOpen}
-        onOpenChange={
-          setDialogOpen
-        }
+        onOpenChange={(open) => {
+          if (saving) {
+            return;
+          }
+
+          setDialogOpen(open);
+
+          if (!open) {
+            setEditingItem(null);
+
+            setForm(
+              createEmptyForm(
+                activeTab,
+              ),
+            );
+          }
+        }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
@@ -1894,8 +2094,8 @@ export default function WebsiteContentPage() {
           </DialogHeader>
 
           <form
-            onSubmit={
-              handleSave
+            onSubmit={(event) =>
+              void handleSave(event)
             }
           >
             <div className="py-4">
@@ -1906,11 +2106,20 @@ export default function WebsiteContentPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() =>
-                  setDialogOpen(
-                    false,
-                  )
-                }
+                onClick={() => {
+                  if (saving) {
+                    return;
+                  }
+
+                  setDialogOpen(false);
+                  setEditingItem(null);
+
+                  setForm(
+                    createEmptyForm(
+                      activeTab,
+                    ),
+                  );
+                }}
                 disabled={saving}
               >
                 Cancel
@@ -1935,62 +2144,5 @@ export default function WebsiteContentPage() {
         </DialogContent>
       </Dialog>
     </DashboardShell>
-  )
-}
-
-/* ============================================================
-   PUBLISH TOGGLE
-============================================================ */
-
-function PublishToggle({
-  value,
-  onChange,
-}: {
-  value: boolean
-  onChange: (
-    value: boolean,
-  ) => void
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-muted/30 p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium">
-            Publish on website
-          </p>
-
-          <p className="mt-1 text-xs text-muted-foreground">
-            {value
-              ? 'This content is visible on the public website.'
-              : 'This content is saved as a draft.'}
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          variant={
-            value
-              ? 'default'
-              : 'outline'
-          }
-          size="sm"
-          onClick={() =>
-            onChange(!value)
-          }
-        >
-          {value ? (
-            <>
-              <Eye className="mr-1.5 h-4 w-4" />
-              Published
-            </>
-          ) : (
-            <>
-              <EyeOff className="mr-1.5 h-4 w-4" />
-              Draft
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
-  )
+  );
 }
