@@ -1,143 +1,593 @@
 import { NextResponse } from 'next/server';
 
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { createClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
-function cleanString(
-  value: unknown,
-  fallback = '',
-): string {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return fallback;
-  }
+/* ============================================================
+   TYPES
+============================================================ */
 
-  return String(value).trim();
+type CreateUserBody = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  availability?: string;
+  activeProjects?: number;
+  tasksAssigned?: number;
+  tasksCompleted?: number;
+  utilization?: number;
+
+  /**
+   * If true, send the new account credentials
+   * to the team member using Resend.
+   */
+  sendWelcomeEmail?: boolean;
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function jsonError(message: string, status: number) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: message,
+    },
+    {
+      status,
+    },
+  );
 }
 
-function normalizeNumber(
-  value: unknown,
-  fallback = 0,
-): number {
-  const number = Number(value);
-
-  if (
-    Number.isNaN(number) ||
-    !Number.isFinite(number)
-  ) {
-    return fallback;
-  }
-
-  return number;
+/**
+ * Normalize email addresses.
+ */
+function normalizeEmail(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
 }
 
-export async function POST(
-  request: Request,
-) {
+/**
+ * Parse ADMIN_EMAILS safely.
+ *
+ * Supports:
+ *
+ * ADMIN_EMAILS=a@gmail.com,b@gmail.com
+ *
+ * OR:
+ *
+ * ADMIN_EMAILS=a@gmail.com
+ * b@gmail.com
+ *
+ * OR:
+ *
+ * ADMIN_EMAILS=a@gmail.com; b@gmail.com
+ */
+function getAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS ?? '';
+
+  return raw
+    .split(/[,\n;]+/)
+    .map(normalizeEmail)
+    .filter(Boolean);
+}
+
+/**
+ * Get the public application URL.
+ */
+function getAppUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    'https://nexora-studio-admin-dashboard.vercel.app'
+  ).replace(/\/+$/, '');
+}
+
+/**
+ * Escape user-controlled values before placing them
+ * inside email HTML.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Send welcome email through Resend.
+ *
+ * Uses the Resend REST API directly.
+ */
+async function sendWelcomeEmail({
+  name,
+  email,
+  password,
+  role,
+}: {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+}) {
+  const resendApiKey = process.env.RESEND_API_KEY?.trim();
+
+  const resendFromEmail = process.env.RESEND_FROM_EMAIL?.trim();
+
+  if (!resendApiKey) {
+    throw new Error(
+      'RESEND_API_KEY is not configured on the server.',
+    );
+  }
+
+  if (!resendFromEmail) {
+    throw new Error(
+      'RESEND_FROM_EMAIL is not configured on the server.',
+    );
+  }
+
+  const appUrl = getAppUrl();
+
+  const response = await fetch(
+    'https://api.resend.com/emails',
+    {
+      method: 'POST',
+
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+
+      body: JSON.stringify({
+        from: resendFromEmail,
+
+        to: [email],
+
+        subject:
+          'Your Nexora Studio Admin Dashboard Account',
+
+        html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+
+    <title>Nexora Studio Account</title>
+  </head>
+
+  <body
+    style="
+      margin:0;
+      padding:0;
+      background:#f5f7fb;
+      font-family:Arial,Helvetica,sans-serif;
+      color:#111827;
+    "
+  >
+    <div
+      style="
+        max-width:600px;
+        margin:40px auto;
+        background:#ffffff;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #e5e7eb;
+      "
+    >
+
+      <div
+        style="
+          padding:28px;
+          background:#111827;
+          color:#ffffff;
+        "
+      >
+        <h1
+          style="
+            margin:0;
+            font-size:24px;
+          "
+        >
+          Nexora Studio
+        </h1>
+
+        <p
+          style="
+            margin:8px 0 0;
+            color:#d1d5db;
+          "
+        >
+          Admin Dashboard Account
+        </p>
+      </div>
+
+      <div
+        style="
+          padding:32px;
+        "
+      >
+        <h2
+          style="
+            margin-top:0;
+          "
+        >
+          Hello ${escapeHtml(name)}!
+        </h2>
+
+        <p>
+          An administrator has created a
+          Nexora Studio Admin Dashboard
+          account for you.
+        </p>
+
+        <p>
+          You can now use the credentials
+          below to access the dashboard.
+        </p>
+
+        <div
+          style="
+            margin:24px 0;
+            padding:20px;
+            background:#f9fafb;
+            border:1px solid #e5e7eb;
+            border-radius:8px;
+          "
+        >
+          <p
+            style="
+              margin:0 0 10px;
+            "
+          >
+            <strong>Role:</strong>
+            ${escapeHtml(role)}
+          </p>
+
+          <p
+            style="
+              margin:0 0 10px;
+            "
+          >
+            <strong>Email:</strong>
+            ${escapeHtml(email)}
+          </p>
+
+          <p
+            style="
+              margin:0;
+            "
+          >
+            <strong>Temporary Password:</strong>
+            ${escapeHtml(password)}
+          </p>
+        </div>
+
+        <a
+          href="${appUrl}"
+          style="
+            display:inline-block;
+            padding:12px 20px;
+            background:#111827;
+            color:#ffffff;
+            text-decoration:none;
+            border-radius:7px;
+            font-weight:bold;
+          "
+        >
+          Access Admin Dashboard
+        </a>
+
+        <p
+          style="
+            margin-top:28px;
+            font-size:13px;
+            color:#6b7280;
+            line-height:1.6;
+          "
+        >
+          For security, please change your
+          password after signing in if your
+          dashboard provides a password
+          change option.
+        </p>
+
+        <p
+          style="
+            font-size:13px;
+            color:#6b7280;
+          "
+        >
+          If you did not expect this account,
+          please contact the Nexora Studio
+          administrator.
+        </p>
+      </div>
+
+    </div>
+  </body>
+</html>
+        `,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    let errorMessage =
+      'Resend failed to send the welcome email.';
+
+    try {
+      const errorData = await response.json();
+
+      errorMessage =
+        errorData?.message ||
+        errorData?.error ||
+        errorMessage;
+    } catch {
+      // Keep default error message.
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  return true;
+}
+
+/* ============================================================
+   POST
+============================================================ */
+
+export async function POST(request: Request) {
+  let createdAuthUserId: string | null = null;
+
   try {
-    const body =
-      await request.json();
+    /* ========================================================
+       1. VERIFY CURRENT LOGIN
+    ======================================================== */
 
-    const name =
-      cleanString(body.name);
+    const supabase = await createClient();
 
-    const email =
-      cleanString(body.email)
-        .toLowerCase();
+    const {
+      data: { user },
+      error: authCheckError,
+    } = await supabase.auth.getUser();
 
-    const password =
-      cleanString(body.password);
+    if (authCheckError || !user) {
+      return jsonError(
+        'You must be signed in before creating a team account.',
+        401,
+      );
+    }
 
-    const role =
-      cleanString(
-        body.role,
-        'Team Member',
+    const currentUserEmail = normalizeEmail(user.email);
+
+    /* ========================================================
+       2. LOAD ADMIN EMAILS
+    ======================================================== */
+
+    const adminEmails = getAdminEmails();
+
+    console.log(
+      'Team account authorization check:',
+      {
+        currentUserId: user.id,
+        currentUserEmail,
+        configuredAdminCount: adminEmails.length,
+        isAuthorized:
+          adminEmails.includes(currentUserEmail),
+      },
+    );
+
+    /* ========================================================
+       3. ADMIN_EMAILS CONFIGURATION CHECK
+    ======================================================== */
+
+    if (adminEmails.length === 0) {
+      return jsonError(
+        'ADMIN_EMAILS is not configured on the server. Add your administrator email(s) to Vercel Environment Variables and redeploy.',
+        500,
+      );
+    }
+
+    /* ========================================================
+       4. VERIFY ADMIN
+    ======================================================== */
+
+    if (!adminEmails.includes(currentUserEmail)) {
+      console.warn(
+        'Unauthorized team account creation attempt:',
+        {
+          userId: user.id,
+          email: currentUserEmail,
+        },
       );
 
-    const availability =
-      cleanString(
-        body.availability,
-        'Available',
+      return jsonError(
+        `Your account is not authorized to create team accounts. The currently signed-in email is "${currentUserEmail}". Add this exact email to ADMIN_EMAILS in Vercel if this account should be an administrator.`,
+        403,
       );
+    }
 
-    const activeProjects =
-      normalizeNumber(
-        body.active_projects,
+    /* ========================================================
+       5. READ BODY
+    ======================================================== */
+
+    let body: CreateUserBody | null = null;
+
+    try {
+      body = (await request.json()) as CreateUserBody;
+    } catch {
+      return jsonError(
+        'Invalid request body.',
+        400,
+      );
+    }
+
+    if (!body) {
+      return jsonError(
+        'Request body is missing.',
+        400,
+      );
+    }
+
+    /* ========================================================
+       6. NORMALIZE INPUT
+    ======================================================== */
+
+    const name = String(
+      body.name ?? '',
+    ).trim();
+
+    const email = normalizeEmail(
+      body.email,
+    );
+
+    const password = String(
+      body.password ?? '',
+    );
+
+    const role = String(
+      body.role ?? '',
+    ).trim();
+
+    const availability = String(
+      body.availability ?? 'Available',
+    ).trim();
+
+    const activeProjects = Math.max(
+      0,
+      Number(body.activeProjects ?? 0) || 0,
+    );
+
+    const tasksAssigned = Math.max(
+      0,
+      Number(body.tasksAssigned ?? 0) || 0,
+    );
+
+    const tasksCompleted = Math.max(
+      0,
+      Number(body.tasksCompleted ?? 0) || 0,
+    );
+
+    const utilization = Math.min(
+      100,
+      Math.max(
         0,
-      );
+        Number(body.utilization ?? 50) || 0,
+      ),
+    );
 
-    const tasksAssigned =
-      normalizeNumber(
-        body.tasks_assigned,
-        0,
-      );
+    /*
+     * IMPORTANT:
+     *
+     * This is deliberately named shouldSendWelcomeEmail
+     * so it does not conflict with the sendWelcomeEmail()
+     * function above.
+     */
+    const shouldSendWelcomeEmail =
+      body.sendWelcomeEmail !== false;
 
-    const tasksCompleted =
-      normalizeNumber(
-        body.tasks_completed,
-        0,
-      );
-
-    const utilization =
-      normalizeNumber(
-        body.utilization,
-        0,
-      );
+    /* ========================================================
+       7. VALIDATION
+    ======================================================== */
 
     if (!name) {
-      return NextResponse.json(
-        {
-          error:
-            'Name is required.',
-        },
-        {
-          status: 400,
-        },
+      return jsonError(
+        'Name is required.',
+        400,
       );
     }
 
     if (!email) {
-      return NextResponse.json(
-        {
-          error:
-            'Email is required.',
-        },
-        {
-          status: 400,
-        },
+      return jsonError(
+        'Email is required.',
+        400,
+      );
+    }
+
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      return jsonError(
+        'Please enter a valid email address.',
+        400,
       );
     }
 
     if (!password) {
-      return NextResponse.json(
-        {
-          error:
-            'Password is required.',
-        },
-        {
-          status: 400,
-        },
+      return jsonError(
+        'Password is required.',
+        400,
       );
     }
 
-    if (password.length < 6) {
-      return NextResponse.json(
-        {
-          error:
-            'Password must be at least 6 characters.',
-        },
-        {
-          status: 400,
-        },
+    if (password.length < 8) {
+      return jsonError(
+        'Password must contain at least 8 characters.',
+        400,
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * 1. Check whether this email already exists in Auth.
-     * ---------------------------------------------------------
-     */
+    if (!role) {
+      return jsonError(
+        'Role is required.',
+        400,
+      );
+    }
+
+    /* ========================================================
+       8. CREATE SERVICE ROLE CLIENT
+    ======================================================== */
+
+    const supabaseAdmin =
+      createSupabaseAdmin();
+
+    /* ========================================================
+       9. CHECK TEAM MEMBER EMAIL
+    ======================================================== */
+
+    const {
+      data: existingTeamMembers,
+      error: teamCheckError,
+    } = await supabaseAdmin
+      .from('team_members')
+      .select('id,email')
+      .ilike('email', email)
+      .limit(1);
+
+    if (teamCheckError) {
+      console.error(
+        'Failed checking team member email:',
+        teamCheckError,
+      );
+
+      return jsonError(
+        'Unable to verify whether this team member already exists.',
+        500,
+      );
+    }
+
+    if (
+      existingTeamMembers &&
+      existingTeamMembers.length > 0
+    ) {
+      return jsonError(
+        'A team member with this email already exists.',
+        409,
+      );
+    }
+
+    /* ========================================================
+       10. CHECK SUPABASE AUTH USERS
+    ======================================================== */
+
     const {
       data: usersData,
       error: usersError,
@@ -149,194 +599,253 @@ export async function POST(
 
     if (usersError) {
       console.error(
-        'Failed to check existing users:',
+        'Could not check existing Auth users:',
         usersError,
       );
 
-      return NextResponse.json(
-        {
-          error:
-            usersError.message,
-        },
-        {
-          status: 500,
-        },
+      return jsonError(
+        'Unable to verify whether this authentication account already exists.',
+        500,
       );
     }
 
-    const existingUser =
+    const existingAuthUser =
       usersData.users.find(
-        (user) =>
-          user.email?.toLowerCase() ===
-          email,
+        (existingUser) =>
+          normalizeEmail(
+            existingUser.email,
+          ) === email,
       );
 
-    if (existingUser) {
-      return NextResponse.json(
-        {
-          error:
-            'A user with this email already exists.',
-        },
-        {
-          status: 409,
-        },
+    if (existingAuthUser) {
+      return jsonError(
+        'An authentication account with this email already exists.',
+        409,
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * 2. Create the real Supabase Auth account.
-     * ---------------------------------------------------------
-     */
+    /* ========================================================
+       11. CREATE AUTH ACCOUNT
+    ======================================================== */
+
     const {
       data: authData,
       error: authError,
     } =
-      await supabaseAdmin.auth.admin.createUser(
-        {
-          email,
-          password,
-          email_confirm: true,
-          user_metadata: {
-            name,
-            role,
-          },
+      await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+
+        /*
+         * Administrator is creating the account,
+         * so the user can immediately log in.
+         */
+        email_confirm: true,
+
+        user_metadata: {
+          full_name: name,
+          role,
         },
-      );
+      });
 
     if (authError) {
       console.error(
-        'Failed to create auth user:',
-        authError,
-      );
-
-      return NextResponse.json(
+        'Failed to create Supabase Auth user:',
         {
-          error:
-            authError.message,
-        },
-        {
-          status: 400,
+          message: authError.message,
+          status: authError.status,
+          code: authError.code,
         },
       );
-    }
 
-    const authUser =
-      authData.user;
-
-    if (!authUser) {
-      return NextResponse.json(
-        {
-          error:
-            'Supabase created the account but returned no user.',
-        },
-        {
-          status: 500,
-        },
+      return jsonError(
+        authError.message ||
+          'Failed to create authentication account.',
+        400,
       );
     }
 
-    /*
-     * ---------------------------------------------------------
-     * 3. Create the Team Dashboard record.
-     * ---------------------------------------------------------
-     */
+    if (!authData.user) {
+      return jsonError(
+        'Supabase did not return the new authentication user.',
+        500,
+      );
+    }
+
+    createdAuthUserId =
+      authData.user.id;
+
+    /* ========================================================
+       12. CREATE TEAM MEMBER
+    ======================================================== */
+
+    const teamMemberPayload = {
+      name,
+      role,
+      email,
+
+      active_projects:
+        activeProjects,
+
+      tasks_assigned:
+        tasksAssigned,
+
+      tasks_completed:
+        tasksCompleted,
+
+      availability,
+
+      utilization,
+    };
+
     const {
-      data: teamMember,
-      error: teamError,
+      data: member,
+      error: memberError,
     } =
       await supabaseAdmin
         .from('team_members')
-        .insert({
-          auth_user_id:
-            authUser.id,
-
-          name,
-
-          role,
-
-          email,
-
-          active_projects:
-            activeProjects,
-
-          tasks_assigned:
-            tasksAssigned,
-
-          tasks_completed:
-            tasksCompleted,
-
-          availability,
-
-          utilization,
-        })
+        .insert(teamMemberPayload)
         .select('*')
         .single();
 
-    /*
-     * ---------------------------------------------------------
-     * 4. Roll back Auth user if team record failed.
-     * ---------------------------------------------------------
-     */
-    if (teamError) {
+    if (memberError) {
       console.error(
-        'Failed to create team member:',
-        teamError,
+        'Failed to create team_members row:',
+        {
+          message:
+            memberError.message,
+
+          details:
+            memberError.details,
+
+          hint:
+            memberError.hint,
+
+          code:
+            memberError.code,
+        },
       );
 
+      /*
+       * Rollback Auth account
+       * if database insertion fails.
+       */
       try {
         await supabaseAdmin.auth.admin.deleteUser(
-          authUser.id,
+          authData.user.id,
         );
+
+        createdAuthUserId = null;
       } catch (rollbackError) {
         console.error(
-          'Failed to roll back Auth user:',
+          'Failed to rollback Auth account:',
           rollbackError,
         );
       }
 
-      return NextResponse.json(
-        {
-          error:
-            teamError.message,
-          details:
-            teamError.details,
-        },
-        {
-          status: 400,
-        },
+      return jsonError(
+        memberError.message ||
+          'Failed to create team member record.',
+        400,
       );
     }
+
+    /* ========================================================
+       13. SEND WELCOME EMAIL
+    ======================================================== */
+
+    let emailSent = false;
+
+    let emailError: string | null = null;
+
+    if (shouldSendWelcomeEmail) {
+      try {
+        /*
+         * IMPORTANT:
+         *
+         * This now correctly calls the FUNCTION,
+         * not the boolean flag.
+         */
+        await sendWelcomeEmail({
+          name,
+          email,
+          password,
+          role,
+        });
+
+        emailSent = true;
+      } catch (error: unknown) {
+        console.error(
+          'Welcome email failed:',
+          error,
+        );
+
+        emailError =
+          error instanceof Error
+            ? error.message
+            : 'The account was created, but the welcome email could not be sent.';
+      }
+    }
+
+    /* ========================================================
+       14. SUCCESS
+    ======================================================== */
+
+    createdAuthUserId = null;
 
     return NextResponse.json(
       {
         success: true,
-        teamMember,
-        user: {
-          id: authUser.id,
-          email: authUser.email,
-        },
+
+        message:
+          emailSent
+            ? 'Team account created and welcome email sent successfully.'
+            : 'Team account created successfully.',
+
+        userId:
+          authData.user.id,
+
+        member,
+
+        emailSent,
+
+        emailError,
       },
       {
         status: 201,
       },
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(
-      'Create team user error:',
+      'Create team account error:',
       error,
     );
 
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to create team user.',
-      },
-      {
-        status: 500,
-      },
+    /* ========================================================
+       FINAL ROLLBACK
+    ======================================================== */
+
+    if (createdAuthUserId) {
+      try {
+        const supabaseAdmin =
+          createSupabaseAdmin();
+
+        await supabaseAdmin.auth.admin.deleteUser(
+          createdAuthUserId,
+        );
+      } catch (rollbackError) {
+        console.error(
+          'Final Auth rollback failed:',
+          rollbackError,
+        );
+      }
+    }
+
+    return jsonError(
+      error instanceof Error
+        ? error.message
+        : 'Failed to create team account.',
+      500,
     );
   }
 }
