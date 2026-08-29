@@ -60,7 +60,7 @@ type ContentType =
   | 'faqs';
 
 type WebsiteContentRow = {
-  id: string;
+  id: string | number;
   [key: string]: any;
 };
 
@@ -122,17 +122,20 @@ const emptyForms: Record<ContentType, Record<string, any>> = {
     slug: '',
     description: '',
     content: '',
-    is_published: false,
+    status: 'draft',
   },
 
   sections: {
     page_id: '',
+    section_key: '',
     title: '',
-    slug: '',
+    subtitle: '',
     content: '',
     image_url: '',
+    button_text: '',
+    button_url: '',
     sort_order: '0',
-    is_published: false,
+    status: 'draft',
   },
 
   services: {
@@ -140,9 +143,13 @@ const emptyForms: Record<ContentType, Record<string, any>> = {
     slug: '',
     description: '',
     price: '',
+    price_label: '',
+    posts: '',
+    platforms: '',
     features: '',
+    sort_order: '0',
+    status: 'draft',
     image_url: '',
-    is_published: false,
   },
 
   products: {
@@ -150,16 +157,18 @@ const emptyForms: Record<ContentType, Record<string, any>> = {
     slug: '',
     description: '',
     price: '',
+    price_label: '',
+    features: '',
+    sort_order: '0',
+    status: 'draft',
     image_url: '',
-    download_url: '',
-    is_published: false,
   },
 
   faqs: {
     question: '',
     answer: '',
     sort_order: '0',
-    is_published: false,
+    status: 'draft',
   },
 };
 
@@ -205,8 +214,7 @@ function getDisplayTitle(
   if (type === 'sections') {
     return (
       item.title ||
-      item.name ||
-      item.slug ||
+      item.section_key ||
       'Untitled section'
     );
   }
@@ -244,6 +252,15 @@ function getSecondaryText(
     return item.answer || '';
   }
 
+  if (type === 'sections') {
+    return (
+      item.subtitle ||
+      item.content ||
+      item.section_key ||
+      ''
+    );
+  }
+
   return (
     item.description ||
     item.content ||
@@ -256,10 +273,10 @@ function isPublished(
   item: WebsiteContentRow,
 ): boolean {
   return (
-    item.is_published === true ||
-    item.published === true ||
     item.status === 'published' ||
-    item.status === 'Published'
+    item.status === 'Published' ||
+    item.is_published === true ||
+    item.published === true
   );
 }
 
@@ -279,36 +296,35 @@ export default function WebsiteContentPage() {
   const [activeTab, setActiveTab] =
     React.useState<ContentType>('pages');
 
-  const [data, setData] = React.useState<
-    Record<ContentType, WebsiteContentRow[]>
-  >({
-    pages: [],
-    sections: [],
-    services: [],
-    products: [],
-    faqs: [],
-  });
+  const [data, setData] =
+    React.useState<Record<ContentType, WebsiteContentRow[]>>({
+      pages: [],
+      sections: [],
+      services: [],
+      products: [],
+      faqs: [],
+    });
 
   const [loading, setLoading] =
-    React.useState<boolean>(false);
+    React.useState(false);
 
   const [search, setSearch] =
-    React.useState<string>('');
+    React.useState('');
 
   const [dialogOpen, setDialogOpen] =
-    React.useState<boolean>(false);
+    React.useState(false);
 
   const [editingItem, setEditingItem] =
     React.useState<WebsiteContentRow | null>(null);
 
   const [saving, setSaving] =
-    React.useState<boolean>(false);
+    React.useState(false);
 
   const [deletingId, setDeletingId] =
-    React.useState<string | null>(null);
+    React.useState<string | number | null>(null);
 
   const [publishingId, setPublishingId] =
-    React.useState<string | null>(null);
+    React.useState<string | number | null>(null);
 
   const [form, setForm] =
     React.useState<Record<string, any>>(
@@ -324,13 +340,33 @@ export default function WebsiteContentPage() {
   ): Promise<void> {
     const config = tableConfig[type];
 
-    const { data: rows, error } =
-      await supabase
-        .from(config.table)
-        .select('*')
-        .order('created_at', {
-          ascending: false,
-        });
+    let query = supabase
+      .from(config.table)
+      .select('*');
+
+    /*
+      Different tables use different useful sorting fields.
+    */
+
+    if (
+      type === 'sections' ||
+      type === 'services' ||
+      type === 'products' ||
+      type === 'faqs'
+    ) {
+      query = query.order('sort_order', {
+        ascending: true,
+      });
+    } else {
+      query = query.order('created_at', {
+        ascending: false,
+      });
+    }
+
+    const {
+      data: rows,
+      error,
+    } = await query;
 
     if (error) {
       throw error;
@@ -338,7 +374,8 @@ export default function WebsiteContentPage() {
 
     setData((current) => ({
       ...current,
-      [type]: (rows || []) as WebsiteContentRow[],
+      [type]:
+        (rows || []) as WebsiteContentRow[],
     }));
   }
 
@@ -350,9 +387,10 @@ export default function WebsiteContentPage() {
     setLoading(true);
 
     try {
-      const types = Object.keys(
-        tableConfig,
-      ) as ContentType[];
+      const types =
+        Object.keys(
+          tableConfig,
+        ) as ContentType[];
 
       await Promise.all(
         types.map((type) =>
@@ -388,10 +426,13 @@ export default function WebsiteContentPage() {
 
   const filteredItems =
     React.useMemo<WebsiteContentRow[]>(() => {
-      const items = data[activeTab];
+      const items =
+        data[activeTab];
 
       const query =
-        search.trim().toLowerCase();
+        search
+          .trim()
+          .toLowerCase();
 
       if (!query) {
         return items;
@@ -425,7 +466,11 @@ export default function WebsiteContentPage() {
           },
         );
       });
-    }, [data, activeTab, search]);
+    }, [
+      data,
+      activeTab,
+      search,
+    ]);
 
   /* ==========================================================
      OPEN ADD
@@ -458,29 +503,47 @@ export default function WebsiteContentPage() {
           item.description || '',
         content:
           item.content || '',
-        is_published:
-          item.is_published === true,
+        status:
+          item.status ||
+          (item.is_published
+            ? 'published'
+            : 'draft'),
       });
-    } else if (
+    }
+
+    else if (
       activeTab === 'sections'
     ) {
       setForm({
         page_id:
-          item.page_id || '',
+          item.page_id ?? '',
+        section_key:
+          item.section_key || '',
         title:
           item.title || '',
-        slug:
-          item.slug || '',
+        subtitle:
+          item.subtitle || '',
         content:
           item.content || '',
         image_url:
           item.image_url || '',
+        button_text:
+          item.button_text || '',
+        button_url:
+          item.button_url || '',
         sort_order:
-          String(item.sort_order ?? 0),
-        is_published:
-          item.is_published === true,
+          String(
+            item.sort_order ?? 0,
+          ),
+        status:
+          item.status ||
+          (item.is_published
+            ? 'published'
+            : 'draft'),
       });
-    } else if (
+    }
+
+    else if (
       activeTab === 'services'
     ) {
       setForm({
@@ -495,16 +558,39 @@ export default function WebsiteContentPage() {
           item.price !== undefined
             ? String(item.price)
             : '',
+        price_label:
+          item.price_label || '',
+        posts:
+          item.posts !== null &&
+          item.posts !== undefined
+            ? String(item.posts)
+            : '',
+        platforms:
+          item.platforms !== null &&
+          item.platforms !== undefined
+            ? String(item.platforms)
+            : '',
         features:
-          Array.isArray(item.features)
+          Array.isArray(
+            item.features,
+          )
             ? item.features.join('\n')
             : item.features || '',
+        sort_order:
+          String(
+            item.sort_order ?? 0,
+          ),
+        status:
+          item.status ||
+          (item.is_published
+            ? 'published'
+            : 'draft'),
         image_url:
           item.image_url || '',
-        is_published:
-          item.is_published === true,
       });
-    } else if (
+    }
+
+    else if (
       activeTab === 'products'
     ) {
       setForm({
@@ -519,23 +605,43 @@ export default function WebsiteContentPage() {
           item.price !== undefined
             ? String(item.price)
             : '',
+        price_label:
+          item.price_label || '',
+        features:
+          Array.isArray(
+            item.features,
+          )
+            ? item.features.join('\n')
+            : item.features || '',
+        sort_order:
+          String(
+            item.sort_order ?? 0,
+          ),
+        status:
+          item.status ||
+          (item.is_published
+            ? 'published'
+            : 'draft'),
         image_url:
           item.image_url || '',
-        download_url:
-          item.download_url || '',
-        is_published:
-          item.is_published === true,
       });
-    } else {
+    }
+
+    else {
       setForm({
         question:
           item.question || '',
         answer:
           item.answer || '',
         sort_order:
-          String(item.sort_order ?? 0),
-        is_published:
-          item.is_published === true,
+          String(
+            item.sort_order ?? 0,
+          ),
+        status:
+          item.status ||
+          (item.is_published
+            ? 'published'
+            : 'draft'),
       });
     }
 
@@ -557,6 +663,19 @@ export default function WebsiteContentPage() {
   }
 
   /* ==========================================================
+     STATUS TOGGLE
+  ========================================================== */
+
+  function toggleFormStatus(): void {
+    updateForm(
+      'status',
+      form.status === 'published'
+        ? 'draft'
+        : 'published',
+    );
+  }
+
+  /* ==========================================================
      SAVE
   ========================================================== */
 
@@ -574,13 +693,15 @@ export default function WebsiteContentPage() {
     try {
       let payload: Record<string, any> = {};
 
-      /* ------------------------------------------------------
+      /* ======================================================
          PAGES
-      ------------------------------------------------------ */
+      ====================================================== */
 
       if (activeTab === 'pages') {
         const title =
-          String(form.title || '').trim();
+          String(
+            form.title || '',
+          ).trim();
 
         if (!title) {
           toast.error(
@@ -603,20 +724,25 @@ export default function WebsiteContentPage() {
             String(
               form.content || '',
             ).trim() || null,
-          is_published:
-            Boolean(form.is_published),
+          status:
+            form.status ===
+            'published'
+              ? 'published'
+              : 'draft',
         };
       }
 
-      /* ------------------------------------------------------
+      /* ======================================================
          SECTIONS
-      ------------------------------------------------------ */
+      ====================================================== */
 
       else if (
         activeTab === 'sections'
       ) {
         const title =
-          String(form.title || '').trim();
+          String(
+            form.title || '',
+          ).trim();
 
         if (!title) {
           toast.error(
@@ -627,38 +753,71 @@ export default function WebsiteContentPage() {
 
         payload = {
           page_id:
+            form.page_id === '' ||
+            form.page_id === null ||
+            form.page_id === undefined
+              ? null
+              : Number.isNaN(
+                    Number(form.page_id),
+                  )
+                ? form.page_id
+                : Number(form.page_id),
+
+          section_key:
             String(
-              form.page_id || '',
+              form.section_key || '',
             ).trim() || null,
+
           title,
-          slug:
+
+          subtitle:
             String(
-              form.slug || '',
-            ).trim(),
+              form.subtitle || '',
+            ).trim() || null,
+
           content:
             String(
               form.content || '',
             ).trim() || null,
+
           image_url:
             String(
               form.image_url || '',
             ).trim() || null,
+
+          button_text:
+            String(
+              form.button_text || '',
+            ).trim() || null,
+
+          button_url:
+            String(
+              form.button_url || '',
+            ).trim() || null,
+
           sort_order:
-            Number(form.sort_order) || 0,
-          is_published:
-            Boolean(form.is_published),
+            Number(form.sort_order) ||
+            0,
+
+          status:
+            form.status ===
+            'published'
+              ? 'published'
+              : 'draft',
         };
       }
 
-      /* ------------------------------------------------------
+      /* ======================================================
          SERVICES
-      ------------------------------------------------------ */
+      ====================================================== */
 
       else if (
         activeTab === 'services'
       ) {
         const name =
-          String(form.name || '').trim();
+          String(
+            form.name || '',
+          ).trim();
 
         if (!name) {
           toast.error(
@@ -669,20 +828,43 @@ export default function WebsiteContentPage() {
 
         payload = {
           name,
+
           slug:
             String(
               form.slug || '',
             ).trim(),
+
           description:
             String(
               form.description || '',
             ).trim() || null,
+
           price:
             form.price === '' ||
             form.price === null ||
             form.price === undefined
               ? 0
               : Number(form.price),
+
+          price_label:
+            String(
+              form.price_label || '',
+            ).trim() || null,
+
+          posts:
+            form.posts === '' ||
+            form.posts === null ||
+            form.posts === undefined
+              ? null
+              : Number(form.posts),
+
+          platforms:
+            form.platforms === '' ||
+            form.platforms === null ||
+            form.platforms === undefined
+              ? null
+              : Number(form.platforms),
+
           features:
             String(
               form.features || '',
@@ -693,24 +875,35 @@ export default function WebsiteContentPage() {
                   value.trim(),
               )
               .filter(Boolean),
+
+          sort_order:
+            Number(form.sort_order) ||
+            0,
+
+          status:
+            form.status ===
+            'published'
+              ? 'published'
+              : 'draft',
+
           image_url:
             String(
               form.image_url || '',
             ).trim() || null,
-          is_published:
-            Boolean(form.is_published),
         };
       }
 
-      /* ------------------------------------------------------
+      /* ======================================================
          PRODUCTS
-      ------------------------------------------------------ */
+      ====================================================== */
 
       else if (
         activeTab === 'products'
       ) {
         const name =
-          String(form.name || '').trim();
+          String(
+            form.name || '',
+          ).trim();
 
         if (!name) {
           toast.error(
@@ -719,38 +912,73 @@ export default function WebsiteContentPage() {
           return;
         }
 
+        /*
+          IMPORTANT:
+          We intentionally do NOT send:
+
+          download_url
+          is_published
+
+          because those columns were not found
+          in your website_products table.
+        */
+
         payload = {
           name,
+
           slug:
             String(
               form.slug || '',
             ).trim(),
+
           description:
             String(
               form.description || '',
             ).trim() || null,
+
           price:
             form.price === '' ||
             form.price === null ||
             form.price === undefined
               ? 0
               : Number(form.price),
+
+          price_label:
+            String(
+              form.price_label || '',
+            ).trim() || null,
+
+          features:
+            String(
+              form.features || '',
+            )
+              .split('\n')
+              .map(
+                (value: string) =>
+                  value.trim(),
+              )
+              .filter(Boolean),
+
+          sort_order:
+            Number(form.sort_order) ||
+            0,
+
+          status:
+            form.status ===
+            'published'
+              ? 'published'
+              : 'draft',
+
           image_url:
             String(
               form.image_url || '',
             ).trim() || null,
-          download_url:
-            String(
-              form.download_url || '',
-            ).trim() || null,
-          is_published:
-            Boolean(form.is_published),
         };
       }
 
-      /* ------------------------------------------------------
+      /* ======================================================
          FAQS
-      ------------------------------------------------------ */
+      ====================================================== */
 
       else {
         const question =
@@ -779,30 +1007,40 @@ export default function WebsiteContentPage() {
 
         payload = {
           question,
+
           answer,
+
           sort_order:
-            Number(form.sort_order) || 0,
-          is_published:
-            Boolean(form.is_published),
+            Number(form.sort_order) ||
+            0,
+
+          status:
+            form.status ===
+            'published'
+              ? 'published'
+              : 'draft',
         };
       }
 
       const table =
-        tableConfig[activeTab].table;
+        tableConfig[
+          activeTab
+        ].table;
 
-      /* ------------------------------------------------------
+      /* ======================================================
          UPDATE
-      ------------------------------------------------------ */
+      ====================================================== */
 
       if (editingItem) {
-        const { error } =
-          await supabase
-            .from(table)
-            .update(payload)
-            .eq(
-              'id',
-              editingItem.id,
-            );
+        const {
+          error,
+        } = await supabase
+          .from(table)
+          .update(payload)
+          .eq(
+            'id',
+            editingItem.id,
+          );
 
         if (error) {
           throw error;
@@ -813,15 +1051,16 @@ export default function WebsiteContentPage() {
         );
       }
 
-      /* ------------------------------------------------------
+      /* ======================================================
          INSERT
-      ------------------------------------------------------ */
+      ====================================================== */
 
       else {
-        const { error } =
-          await supabase
-            .from(table)
-            .insert(payload);
+        const {
+          error,
+        } = await supabase
+          .from(table)
+          .insert(payload);
 
         if (error) {
           throw error;
@@ -836,10 +1075,14 @@ export default function WebsiteContentPage() {
       setEditingItem(null);
 
       setForm(
-        createEmptyForm(activeTab),
+        createEmptyForm(
+          activeTab,
+        ),
       );
 
-      await fetchTable(activeTab);
+      await fetchTable(
+        activeTab,
+      );
     } catch (error: any) {
       console.error(
         'SAVE WEBSITE CONTENT ERROR:',
@@ -881,24 +1124,28 @@ export default function WebsiteContentPage() {
       return;
     }
 
-    if (deletingId) {
+    if (deletingId !== null) {
       return;
     }
 
-    setDeletingId(item.id);
+    setDeletingId(
+      item.id,
+    );
 
     try {
-      const { error } =
-        await supabase
-          .from(
-            tableConfig[activeTab]
-              .table,
-          )
-          .delete()
-          .eq(
-            'id',
-            item.id,
-          );
+      const {
+        error,
+      } = await supabase
+        .from(
+          tableConfig[
+            activeTab
+          ].table,
+        )
+        .delete()
+        .eq(
+          'id',
+          item.id,
+        );
 
       if (error) {
         throw error;
@@ -911,14 +1158,17 @@ export default function WebsiteContentPage() {
       setData((current) => ({
         ...current,
         [activeTab]:
-          current[activeTab].filter(
+          current[
+            activeTab
+          ].filter(
             (row) =>
               row.id !== item.id,
           ),
       }));
 
       if (
-        editingItem?.id === item.id
+        editingItem?.id ===
+        item.id
       ) {
         setEditingItem(null);
         setDialogOpen(false);
@@ -949,30 +1199,43 @@ export default function WebsiteContentPage() {
   async function togglePublished(
     item: WebsiteContentRow,
   ): Promise<void> {
-    if (publishingId) {
+    if (
+      publishingId !== null
+    ) {
       return;
     }
 
-    setPublishingId(item.id);
+    setPublishingId(
+      item.id,
+    );
 
     const nextValue =
       !isPublished(item);
 
     try {
-      const { error } =
-        await supabase
-          .from(
-            tableConfig[activeTab]
-              .table,
-          )
-          .update({
-            is_published:
-              nextValue,
-          })
-          .eq(
-            'id',
-            item.id,
-          );
+      /*
+        We use the status column instead of
+        is_published for all content tables.
+      */
+
+      const {
+        error,
+      } = await supabase
+        .from(
+          tableConfig[
+            activeTab
+          ].table,
+        )
+        .update({
+          status:
+            nextValue
+              ? 'published'
+              : 'draft',
+        })
+        .eq(
+          'id',
+          item.id,
+        );
 
       if (error) {
         throw error;
@@ -987,13 +1250,18 @@ export default function WebsiteContentPage() {
       setData((current) => ({
         ...current,
         [activeTab]:
-          current[activeTab].map(
+          current[
+            activeTab
+          ].map(
             (row) =>
-              row.id === item.id
+              row.id ===
+              item.id
                 ? {
                     ...row,
-                    is_published:
-                      nextValue,
+                    status:
+                      nextValue
+                        ? 'published'
+                        : 'draft',
                   }
                 : row,
           ),
@@ -1018,21 +1286,25 @@ export default function WebsiteContentPage() {
   }
 
   /* ==========================================================
-     RENDER PUBLISH TOGGLE
+     RENDER STATUS TOGGLE
   ========================================================== */
 
   function renderPublishToggle(): React.ReactNode {
+    const published =
+      form.status ===
+      'published';
+
     return (
       <div className="rounded-xl border border-border bg-muted/30 p-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium">
-              Publish on website
+              Website visibility
             </p>
 
             <p className="mt-1 text-xs text-muted-foreground">
-              {form.is_published
-                ? 'This content is visible on the public website.'
+              {published
+                ? 'This content is published on the website.'
                 : 'This content is saved as a draft.'}
             </p>
           </div>
@@ -1040,19 +1312,16 @@ export default function WebsiteContentPage() {
           <Button
             type="button"
             variant={
-              form.is_published
+              published
                 ? 'default'
                 : 'outline'
             }
             size="sm"
-            onClick={() =>
-              updateForm(
-                'is_published',
-                !form.is_published,
-              )
+            onClick={
+              toggleFormStatus
             }
           >
-            {form.is_published ? (
+            {published ? (
               <>
                 <Eye className="mr-1.5 h-4 w-4" />
                 Published
@@ -1074,11 +1343,13 @@ export default function WebsiteContentPage() {
   ========================================================== */
 
   function renderForm(): React.ReactNode {
-    /* --------------------------------------------------------
+    /* ========================================================
        PAGES
-    -------------------------------------------------------- */
+    ======================================================== */
 
-    if (activeTab === 'pages') {
+    if (
+      activeTab === 'pages'
+    ) {
       return (
         <div className="grid gap-5">
           <div className="grid gap-2">
@@ -1126,7 +1397,8 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.description || ''
+                form.description ||
+                ''
               }
               onChange={(event) =>
                 updateForm(
@@ -1164,9 +1436,9 @@ export default function WebsiteContentPage() {
       );
     }
 
-    /* --------------------------------------------------------
+    /* ========================================================
        SECTIONS
-    -------------------------------------------------------- */
+    ======================================================== */
 
     if (
       activeTab === 'sections'
@@ -1180,7 +1452,7 @@ export default function WebsiteContentPage() {
 
             <Input
               value={
-                form.page_id || ''
+                form.page_id ?? ''
               }
               onChange={(event) =>
                 updateForm(
@@ -1188,11 +1460,35 @@ export default function WebsiteContentPage() {
                   event.target.value,
                 )
               }
-              placeholder="Page UUID"
+              placeholder="1"
             />
 
             <p className="text-xs text-muted-foreground">
-              Enter the UUID of the website page this section belongs to.
+              Enter the ID from your website_pages table.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Section Key
+            </Label>
+
+            <Input
+              value={
+                form.section_key ||
+                ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'section_key',
+                  event.target.value,
+                )
+              }
+              placeholder="hero"
+            />
+
+            <p className="text-xs text-muted-foreground">
+              Example: hero, story, mission, vision, process, faq.
             </p>
           </div>
 
@@ -1217,20 +1513,20 @@ export default function WebsiteContentPage() {
 
           <div className="grid gap-2">
             <Label>
-              Slug
+              Subtitle
             </Label>
 
             <Input
               value={
-                form.slug || ''
+                form.subtitle || ''
               }
               onChange={(event) =>
                 updateForm(
-                  'slug',
+                  'subtitle',
                   event.target.value,
                 )
               }
-              placeholder="hero"
+              placeholder="Your subtitle..."
             />
           </div>
 
@@ -1250,7 +1546,7 @@ export default function WebsiteContentPage() {
                 )
               }
               placeholder="Section content..."
-              rows={8}
+              rows={7}
             />
           </div>
 
@@ -1269,7 +1565,271 @@ export default function WebsiteContentPage() {
                   event.target.value,
                 )
               }
-              placeholder="/images/hero.jpg"
+              placeholder="https://..."
+            />
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>
+                Button Text
+              </Label>
+
+              <Input
+                value={
+                  form.button_text ||
+                  ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'button_text',
+                    event.target.value,
+                  )
+                }
+                placeholder="Get Started"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Button URL
+              </Label>
+
+              <Input
+                value={
+                  form.button_url ||
+                  ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'button_url',
+                    event.target.value,
+                  )
+                }
+                placeholder="/contact"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Sort Order
+            </Label>
+
+            <Input
+              type="number"
+              value={
+                form.sort_order ??
+                '0'
+              }
+              onChange={(event) =>
+                updateForm(
+                  'sort_order',
+                  event.target.value,
+                )
+              }
+            />
+          </div>
+
+          {renderPublishToggle()}
+        </div>
+      );
+    }
+
+    /* ========================================================
+       SERVICES
+    ======================================================== */
+
+    if (
+      activeTab === 'services'
+    ) {
+      return (
+        <div className="grid gap-5">
+          <div className="grid gap-2">
+            <Label>
+              Service Name
+            </Label>
+
+            <Input
+              value={
+                form.name || ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'name',
+                  event.target.value,
+                )
+              }
+              placeholder="Basic"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Slug
+            </Label>
+
+            <Input
+              value={
+                form.slug || ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'slug',
+                  event.target.value,
+                )
+              }
+              placeholder="basic"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Description
+            </Label>
+
+            <Textarea
+              value={
+                form.description ||
+                ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'description',
+                  event.target.value,
+                )
+              }
+              placeholder="Describe this service..."
+              rows={4}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>
+                Price
+              </Label>
+
+              <Input
+                type="number"
+                value={
+                  form.price ?? ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'price',
+                    event.target.value,
+                  )
+                }
+                placeholder="5000"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Price Label
+              </Label>
+
+              <Input
+                value={
+                  form.price_label ||
+                  ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'price_label',
+                    event.target.value,
+                  )
+                }
+                placeholder="per month"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>
+                Posts
+              </Label>
+
+              <Input
+                type="number"
+                value={
+                  form.posts ?? ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'posts',
+                    event.target.value,
+                  )
+                }
+                placeholder="12"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Platforms
+              </Label>
+
+              <Input
+                type="number"
+                value={
+                  form.platforms ?? ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'platforms',
+                    event.target.value,
+                  )
+                }
+                placeholder="1"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Features
+            </Label>
+
+            <Textarea
+              value={
+                form.features || ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'features',
+                  event.target.value,
+                )
+              }
+              placeholder={
+                'Captions and graphics\nBasic monthly report\nContent planning'
+              }
+              rows={6}
+            />
+
+            <p className="text-xs text-muted-foreground">
+              Put one feature per line.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>
+              Image URL
+            </Label>
+
+            <Input
+              value={
+                form.image_url || ''
+              }
+              onChange={(event) =>
+                updateForm(
+                  'image_url',
+                  event.target.value,
+                )
+              }
+              placeholder="https://..."
             />
           </div>
 
@@ -1298,146 +1858,9 @@ export default function WebsiteContentPage() {
       );
     }
 
-    /* --------------------------------------------------------
-       SERVICES
-    -------------------------------------------------------- */
-
-    if (
-      activeTab === 'services'
-    ) {
-      return (
-        <div className="grid gap-5">
-          <div className="grid gap-2">
-            <Label>
-              Service Name
-            </Label>
-
-            <Input
-              value={
-                form.name || ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'name',
-                  event.target.value,
-                )
-              }
-              placeholder="Social Media Management"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>
-              Slug
-            </Label>
-
-            <Input
-              value={
-                form.slug || ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'slug',
-                  event.target.value,
-                )
-              }
-              placeholder="social-media-management"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>
-              Description
-            </Label>
-
-            <Textarea
-              value={
-                form.description || ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'description',
-                  event.target.value,
-                )
-              }
-              placeholder="Describe this service..."
-              rows={5}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>
-              Price
-            </Label>
-
-            <Input
-              type="number"
-              value={
-                form.price ?? ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'price',
-                  event.target.value,
-                )
-              }
-              placeholder="15000"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>
-              Features
-            </Label>
-
-            <Textarea
-              value={
-                form.features || ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'features',
-                  event.target.value,
-                )
-              }
-              placeholder={
-                'Content planning\nMonthly reports\nCommunity management'
-              }
-              rows={6}
-            />
-
-            <p className="text-xs text-muted-foreground">
-              Put one feature per line.
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>
-              Image URL
-            </Label>
-
-            <Input
-              value={
-                form.image_url || ''
-              }
-              onChange={(event) =>
-                updateForm(
-                  'image_url',
-                  event.target.value,
-                )
-              }
-              placeholder="/images/services/social.jpg"
-            />
-          </div>
-
-          {renderPublishToggle()}
-        </div>
-      );
-    }
-
-    /* --------------------------------------------------------
+    /* ========================================================
        PRODUCTS
-    -------------------------------------------------------- */
+    ======================================================== */
 
     if (
       activeTab === 'products'
@@ -1489,7 +1912,8 @@ export default function WebsiteContentPage() {
 
             <Textarea
               value={
-                form.description || ''
+                form.description ||
+                ''
               }
               onChange={(event) =>
                 updateForm(
@@ -1502,24 +1926,72 @@ export default function WebsiteContentPage() {
             />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>
+                Price
+              </Label>
+
+              <Input
+                type="number"
+                value={
+                  form.price ?? ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'price',
+                    event.target.value,
+                  )
+                }
+                placeholder="899"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Price Label
+              </Label>
+
+              <Input
+                value={
+                  form.price_label ||
+                  ''
+                }
+                onChange={(event) =>
+                  updateForm(
+                    'price_label',
+                    event.target.value,
+                  )
+                }
+                placeholder="one-time"
+              />
+            </div>
+          </div>
+
           <div className="grid gap-2">
             <Label>
-              Price
+              Features
             </Label>
 
-            <Input
-              type="number"
+            <Textarea
               value={
-                form.price ?? ''
+                form.features || ''
               }
               onChange={(event) =>
                 updateForm(
-                  'price',
+                  'features',
                   event.target.value,
                 )
               }
-              placeholder="899"
+              placeholder={
+                'Editable template\nPDF guide\nBonus resources'
+              }
+              rows={6}
             />
+
+            <p className="text-xs text-muted-foreground">
+              Put one feature per line.
+            </p>
           </div>
 
           <div className="grid gap-2">
@@ -1537,26 +2009,27 @@ export default function WebsiteContentPage() {
                   event.target.value,
                 )
               }
-              placeholder="/images/products/planner.jpg"
+              placeholder="https://..."
             />
           </div>
 
           <div className="grid gap-2">
             <Label>
-              Download URL
+              Sort Order
             </Label>
 
             <Input
+              type="number"
               value={
-                form.download_url || ''
+                form.sort_order ??
+                '0'
               }
               onChange={(event) =>
                 updateForm(
-                  'download_url',
+                  'sort_order',
                   event.target.value,
                 )
               }
-              placeholder="https://..."
             />
           </div>
 
@@ -1565,9 +2038,9 @@ export default function WebsiteContentPage() {
       );
     }
 
-    /* --------------------------------------------------------
+    /* ========================================================
        FAQS
-    -------------------------------------------------------- */
+    ======================================================== */
 
     return (
       <div className="grid gap-5">
@@ -1658,7 +2131,7 @@ export default function WebsiteContentPage() {
 
       <div className="mt-6 space-y-6">
         {/* ====================================================
-            HEADER CARD
+            HEADER
         ==================================================== */}
 
         <Card>
@@ -1675,7 +2148,7 @@ export default function WebsiteContentPage() {
                   </h2>
 
                   <p className="text-sm text-muted-foreground">
-                    All website content is managed from this page.
+                    Manage the content displayed on your public website.
                   </p>
                 </div>
               </div>
@@ -1701,7 +2174,10 @@ export default function WebsiteContentPage() {
                   onClick={openAdd}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Add {activeConfig.singular}
+                  Add{' '}
+                  {
+                    activeConfig.singular
+                  }
                 </Button>
               </div>
             </div>
@@ -1787,7 +2263,8 @@ export default function WebsiteContentPage() {
 
                         <Input
                           value={
-                            activeTab === type
+                            activeTab ===
+                            type
                               ? search
                               : ''
                           }
@@ -1852,7 +2329,7 @@ export default function WebsiteContentPage() {
                         <p className="mt-1 max-w-md text-sm text-muted-foreground">
                           Add your first{' '}
                           {config.singular.toLowerCase()}{' '}
-                          to start managing this section of your website.
+                          to start managing your website.
                         </p>
 
                         <Button
@@ -1861,7 +2338,9 @@ export default function WebsiteContentPage() {
                         >
                           <Plus className="mr-2 h-4 w-4" />
                           Add{' '}
-                          {config.singular}
+                          {
+                            config.singular
+                          }
                         </Button>
                       </CardContent>
                     </Card>
@@ -1881,7 +2360,9 @@ export default function WebsiteContentPage() {
                             return (
                               <motion.div
                                 key={
-                                  item.id
+                                  String(
+                                    item.id,
+                                  )
                                 }
                                 initial={{
                                   opacity: 0,
@@ -1961,6 +2442,18 @@ export default function WebsiteContentPage() {
                                             ).toLocaleString(
                                               'en-PH',
                                             )}
+                                          </span>
+                                        )}
+
+                                      {item.sort_order !==
+                                        undefined &&
+                                        item.sort_order !==
+                                          null && (
+                                          <span className="rounded-full bg-muted px-2.5 py-1">
+                                            Order:{' '}
+                                            {
+                                              item.sort_order
+                                            }
                                           </span>
                                         )}
 
