@@ -487,7 +487,19 @@ export interface Project {
   stage: ProjectStage;
   progress: number;
   deadline: string;
+
+  /*
+   * Project team members.
+   *
+   * This remains string[] for compatibility with the
+   * existing Projects page and database team field.
+   *
+   * The Projects page should populate this field by
+   * selecting existing members from the Supabase
+   * team_members table instead of manually typing names.
+   */
   team: string[];
+
   priority:
     | 'Low'
     | 'Medium'
@@ -1184,6 +1196,15 @@ export interface TeamMember {
     | 'Busy'
     | 'On Leave';
   utilization: number;
+
+  /*
+   * Supabase team_members fields.
+   *
+   * These fields allow the Team page and Projects page
+   * to work with the actual team_members records.
+   */
+  created_at?: string;
+  auth_user_id?: string | null;
 }
 
 export const team: TeamMember[] = [
@@ -1708,6 +1729,134 @@ export const notifications = [
     unread: false,
   },
 ];
+
+/* ============================================================
+   WEBSITE CONTENT
+============================================================ */
+
+/**
+ * Website Content
+ *
+ * This section contains the shared TypeScript types used by
+ * /website-content/page.tsx.
+ *
+ * The actual records are stored in Supabase.
+ * These interfaces are only the frontend data contracts.
+ */
+
+/* ------------------------------------------------------------
+   WEBSITE CONTENT — GENERAL TYPES
+------------------------------------------------------------ */
+
+export type WebsiteContentStatus =
+  | 'Draft'
+  | 'Published'
+  | 'Unpublished';
+
+export type WebsiteContentTab =
+  | 'Pages'
+  | 'Sections'
+  | 'Services'
+  | 'Testimonials'
+  | 'FAQs';
+
+/* ------------------------------------------------------------
+   WEBSITE PAGES
+------------------------------------------------------------ */
+
+export interface WebsitePage {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  status: WebsiteContentStatus;
+  published: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* ------------------------------------------------------------
+   WEBSITE SECTIONS
+------------------------------------------------------------ */
+
+export interface WebsiteSection {
+  id: string;
+  page_id: string | null;
+  page_slug?: string;
+  title: string;
+  section_type: string;
+  content: string;
+  sort_order: number;
+  status: WebsiteContentStatus;
+  published: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* ------------------------------------------------------------
+   WEBSITE SERVICES
+------------------------------------------------------------ */
+
+export interface WebsiteService {
+  id: string;
+  name: string;
+  slug?: string;
+  description: string;
+  price?: number | null;
+  features: string[];
+  icon?: string | null;
+  sort_order: number;
+  status: WebsiteContentStatus;
+  published: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* ------------------------------------------------------------
+   WEBSITE TESTIMONIALS
+------------------------------------------------------------ */
+
+export interface WebsiteTestimonial {
+  id: string;
+  client_name: string;
+  company?: string | null;
+  role?: string | null;
+  quote: string;
+  avatar?: string | null;
+  rating?: number | null;
+  sort_order: number;
+  status: WebsiteContentStatus;
+  published: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* ------------------------------------------------------------
+   WEBSITE FAQS
+------------------------------------------------------------ */
+
+export interface WebsiteFAQ {
+  id: string;
+  question: string;
+  answer: string;
+  category?: string | null;
+  sort_order: number;
+  status: WebsiteContentStatus;
+  published: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/* ------------------------------------------------------------
+   WEBSITE CONTENT UNION
+------------------------------------------------------------ */
+
+export type WebsiteContentRecord =
+  | WebsitePage
+  | WebsiteSection
+  | WebsiteService
+  | WebsiteTestimonial
+  | WebsiteFAQ;
 
 /* ============================================================
    NAVIGATION
