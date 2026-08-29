@@ -130,10 +130,7 @@ const stages: ProjectStage[] = [
   'Completed',
 ];
 
-const stageAccent: Record<
-  string,
-  string
-> = {
+const stageAccent: Record<string, string> = {
   Discovery: 'bg-blue-500',
 
   Planning:
@@ -179,7 +176,9 @@ const priorityOptions = [
 
 interface ProjectForm {
   name: string;
+
   client: string;
+
   client_id: string | null;
 
   serviceType: string;
@@ -191,7 +190,7 @@ interface ProjectForm {
   deadline: string;
 
   /*
-   * Team now contains selected team-member names.
+   * Team contains the selected team-member names.
    *
    * Example:
    *
@@ -214,13 +213,21 @@ interface ProjectForm {
 
 interface TeamMember {
   id: string;
+
   name: string;
+
   role?: string;
+
   email?: string;
+
   availability?: string;
+
   activeProjects?: number;
+
   tasksAssigned?: number;
+
   tasksCompleted?: number;
+
   utilization?: number;
 }
 
@@ -273,7 +280,7 @@ const emptyForm: ProjectForm = {
 function getInitials(
   name: string,
 ) {
-  return name
+  return String(name || '')
     .split(/\s+/)
     .filter(Boolean)
     .map(
@@ -326,11 +333,17 @@ export default function ProjectsPage() {
   /* ==========================================================
      TEAM DATA
      
-     Connected to the existing Team page data source.
-     
-     fetchTeam() should return the records from:
+     fetchTeam() reads from the existing Team page data source:
      
      public.team_members
+     
+     The same records are used by:
+     
+     Edit Project
+        ↓
+     Project Team
+        ↓
+     Select team members
   ========================================================== */
 
   const {
@@ -342,7 +355,11 @@ export default function ProjectsPage() {
   );
 
   const allTeamMembers =
-    (team ?? []) as TeamMember[];
+    React.useMemo(
+      () =>
+        (team ?? []) as TeamMember[],
+      [team],
+    );
 
   function refetch() {
     setRefreshKey(
@@ -352,7 +369,7 @@ export default function ProjectsPage() {
   }
 
   /* ==========================================================
-     DIALOG
+     DIALOG STATE
   ========================================================== */
 
   const [
@@ -380,7 +397,7 @@ export default function ProjectsPage() {
   );
 
   /* ==========================================================
-     TEAM DROPDOWN
+     TEAM DROPDOWN STATE
   ========================================================== */
 
   const [
@@ -400,9 +417,9 @@ export default function ProjectsPage() {
   const allProjects =
     projects ?? [];
 
-  /* ============================================================
-     KPIs
-  ============================================================ */
+  /* ==========================================================
+     KPI DATA
+  ========================================================== */
 
   const inProgress =
     allProjects.filter(
@@ -427,19 +444,19 @@ export default function ProjectsPage() {
           'Completed',
     ).length;
 
-  /* ============================================================
+  /* ==========================================================
      NORMALIZE PROJECT TEAM
      
-     Supports BOTH:
+     Supports:
      
-     1. New array format
+     1. New array:
         ["Andrea Lim", "Kai Santos"]
      
-     2. Existing string format
+     2. Existing string:
         "Andrea Lim, Kai Santos"
      
-     This keeps older projects compatible.
-  ============================================================ */
+     This keeps existing projects compatible.
+  ========================================================== */
 
   function normalizeProjectTeam(
     value: unknown,
@@ -448,10 +465,11 @@ export default function ProjectsPage() {
       Array.isArray(value)
     ) {
       return value
-        .map((member) =>
-          String(
-            member,
-          ).trim(),
+        .map(
+          (member) =>
+            String(
+              member,
+            ).trim(),
         )
         .filter(Boolean);
     }
@@ -462,8 +480,9 @@ export default function ProjectsPage() {
     ) {
       return value
         .split(',')
-        .map((member) =>
-          member.trim(),
+        .map(
+          (member) =>
+            member.trim(),
         )
         .filter(Boolean);
     }
@@ -471,12 +490,9 @@ export default function ProjectsPage() {
     return [];
   }
 
-  /* ============================================================
+  /* ==========================================================
      NORMALIZE TEAM MEMBER NAME
-     
-     Makes matching more reliable when editing an existing
-     project.
-  ============================================================ */
+  ========================================================== */
 
   function normalizeTeamMemberName(
     name: string,
@@ -488,12 +504,47 @@ export default function ProjectsPage() {
       .toLowerCase();
   }
 
-  /* ============================================================
-     MATCH EXISTING PROJECT TEAM WITH CURRENT TEAM MEMBERS
+  /* ==========================================================
+     FIND CURRENT TEAM MEMBER
      
-     This allows old saved names to correctly select the
-     corresponding current Team member.
-  ============================================================ */
+     Matches by name so existing project data can be
+     connected to the current team_members records.
+  ========================================================== */
+
+  function findTeamMemberByName(
+    name: string,
+  ) {
+    const normalized =
+      normalizeTeamMemberName(
+        name,
+      );
+
+    return allTeamMembers.find(
+      (member) =>
+        normalizeTeamMemberName(
+          member.name,
+        ) === normalized,
+    );
+  }
+
+  /* ==========================================================
+     NORMALIZE EXISTING PROJECT TEAM
+     
+     IMPORTANT FOR EDIT PROJECT:
+     
+     If the project already contains:
+     
+     ["Andrea Lim", "Kai Santos"]
+     
+     those exact existing Team members will be automatically
+     selected in the Team selector.
+     
+     If the old project contains:
+     
+     "Andrea Lim, Kai Santos"
+     
+     it is also converted correctly.
+  ========================================================== */
 
   function normalizeExistingTeamSelection(
     value: unknown,
@@ -510,30 +561,45 @@ export default function ProjectsPage() {
       return [];
     }
 
-    return existing.map(
+    const selectedNames: string[] =
+      [];
+
+    existing.forEach(
       (savedName) => {
         const matchedMember =
-          allTeamMembers.find(
-            (member) =>
-              normalizeTeamMemberName(
-                member.name,
-              ) ===
-              normalizeTeamMemberName(
-                savedName,
-              ),
+          findTeamMemberByName(
+            savedName,
           );
 
-        return (
+        const finalName =
           matchedMember?.name ||
-          savedName
-        );
+          savedName;
+
+        if (
+          finalName &&
+          !selectedNames.some(
+            (name) =>
+              normalizeTeamMemberName(
+                name,
+              ) ===
+              normalizeTeamMemberName(
+                finalName,
+              ),
+          )
+        ) {
+          selectedNames.push(
+            finalName,
+          );
+        }
       },
     );
+
+    return selectedNames;
   }
 
-  /* ============================================================
+  /* ==========================================================
      AUTO OPEN NEW PROJECT FROM CLIENT
-  ============================================================ */
+  ========================================================== */
 
   React.useEffect(() => {
     if (
@@ -577,9 +643,9 @@ export default function ProjectsPage() {
     initializedFromClient,
   ]);
 
-  /* ============================================================
-     ADD PROJECT
-  ============================================================ */
+  /* ==========================================================
+     OPEN ADD PROJECT
+  ========================================================== */
 
   function openAdd() {
     setEditId(null);
@@ -604,14 +670,21 @@ export default function ProjectsPage() {
     setOpen(true);
   }
 
-  /* ============================================================
-     EDIT PROJECT
-     
-     Loads ALL existing project values into the edit form.
+  /* ==========================================================
+     OPEN EDIT PROJECT
      
      IMPORTANT:
-     Existing Project Team members are automatically selected.
-  ============================================================ */
+     
+     Existing project.team is loaded into form.team.
+     
+     That means:
+     
+     Edit Project
+          ↓
+     Project Team
+          ↓
+     Existing members are already CHECKED
+  ========================================================== */
 
   function openEdit(
     id: string,
@@ -630,12 +703,12 @@ export default function ProjectsPage() {
       return;
     }
 
-    setEditId(id);
-
     const existingTeam =
       normalizeExistingTeamSelection(
         project.team,
       );
+
+    setEditId(id);
 
     setForm({
       name:
@@ -665,6 +738,9 @@ export default function ProjectsPage() {
         project.deadline ||
         getDefaultDeadline(),
 
+      /*
+       * Existing team members are selected here.
+       */
       team:
         existingTeam,
 
@@ -678,9 +754,21 @@ export default function ProjectsPage() {
     setOpen(true);
   }
 
-  /* ============================================================
+  /* ==========================================================
      TOGGLE TEAM MEMBER
-  ============================================================ */
+     
+     Selecting:
+     
+     Andrea Lim
+     
+     adds:
+     
+     ["Andrea Lim"]
+     
+     Clicking again removes:
+     
+     []
+  ========================================================== */
 
   function toggleTeamMember(
     memberName: string,
@@ -729,9 +817,9 @@ export default function ProjectsPage() {
     );
   }
 
-  /* ============================================================
-     REMOVE TEAM MEMBER
-  ============================================================ */
+  /* ==========================================================
+     REMOVE TEAM MEMBER CHIP
+  ========================================================== */
 
   function removeTeamMember(
     memberName: string,
@@ -754,9 +842,21 @@ export default function ProjectsPage() {
     );
   }
 
-  /* ============================================================
-     RESET DIALOG STATE
-  ============================================================ */
+  /* ==========================================================
+     GET TEAM MEMBER
+  ========================================================== */
+
+  function getTeamMember(
+    name: string,
+  ) {
+    return findTeamMemberByName(
+      name,
+    );
+  }
+
+  /* ==========================================================
+     CLOSE PROJECT DIALOG
+  ========================================================== */
 
   function closeProjectDialog() {
     if (submitting) {
@@ -779,17 +879,9 @@ export default function ProjectsPage() {
     });
   }
 
-  /* ============================================================
+  /* ==========================================================
      SAVE / UPDATE PROJECT
-     
-     CREATE:
-       insertProject(payload)
-     
-     EDIT:
-       updateProject(editId, payload)
-     
-     EVERY EDITABLE FIELD IS INCLUDED.
-  ============================================================ */
+  ========================================================== */
 
   async function handleSubmit(
     event: React.FormEvent,
@@ -821,11 +913,8 @@ export default function ProjectsPage() {
     }
 
     /*
-     * A NEW project created from
-     * a client must have client_id.
-     *
-     * Existing projects are allowed
-     * to keep their current client_id.
+     * New projects created from a client workspace
+     * require client_id.
      */
     if (
       !editId &&
@@ -848,10 +937,21 @@ export default function ProjectsPage() {
       /* ======================================================
          CLEAN TEAM ARRAY
          
-         Removes:
-         - empty names
-         - accidental spaces
-         - duplicate members
+         Example:
+         
+         [
+           "Andrea Lim",
+           "Andrea Lim",
+           "",
+           " Kai Santos "
+         ]
+         
+         becomes:
+         
+         [
+           "Andrea Lim",
+           "Kai Santos"
+         ]
       ====================================================== */
 
       const cleanedTeam =
@@ -869,7 +969,22 @@ export default function ProjectsPage() {
       /* ======================================================
          DATABASE PAYLOAD
          
-         This contains every editable project field.
+         IMPORTANT:
+         
+         The existing project.team field is preserved.
+         
+         We are NOT creating a new team table relation here.
+         
+         The selected Team page members are saved to:
+         
+         project.team
+         
+         Example:
+         
+         [
+           "Andrea Lim",
+           "Kai Santos"
+         ]
       ====================================================== */
 
       const payload = {
@@ -896,16 +1011,6 @@ export default function ProjectsPage() {
         deadline:
           form.deadline,
 
-        /*
-         * Existing projects.team field.
-         *
-         * Example:
-         *
-         * [
-         *   "Andrea Lim",
-         *   "Kai Santos"
-         * ]
-         */
         team:
           cleanedTeam,
 
@@ -924,20 +1029,19 @@ export default function ProjectsPage() {
             payload,
           );
 
-        /*
-         * Update successful.
-         */
         toast.success(
           'Project updated successfully.',
           {
             description:
-              `${updated?.name || form.name} has been updated.`,
+              `${
+                updated?.name ||
+                form.name
+              } has been updated.`,
           },
         );
 
         /*
-         * Synchronize the form with the actual
-         * database response.
+         * Synchronize form with returned database data.
          */
         setForm({
           name:
@@ -964,8 +1068,7 @@ export default function ProjectsPage() {
           progress:
             Number(
               updated?.progress,
-            ) ||
-            0,
+            ) || 0,
 
           deadline:
             updated?.deadline ||
@@ -983,16 +1086,12 @@ export default function ProjectsPage() {
         });
 
         /*
-         * Refresh project data from Supabase.
-         *
-         * This ensures the Kanban board and List View
-         * immediately show the updated values.
+         * Refresh Projects page.
          */
         refetch();
 
         /*
-         * Close the Edit Project dialog after
-         * the update has succeeded.
+         * Close edit dialog after successful save.
          */
         setOpen(false);
 
@@ -1021,7 +1120,7 @@ export default function ProjectsPage() {
       );
 
       /*
-       * Open Project File page.
+       * Open Project File after creation.
        */
       if (
         created?.id
@@ -1047,9 +1146,6 @@ export default function ProjectsPage() {
         return;
       }
 
-      /*
-       * Fallback if no ID was returned.
-       */
       setOpen(false);
 
       setEditId(null);
@@ -1080,9 +1176,9 @@ export default function ProjectsPage() {
     }
   }
 
-  /* ============================================================
+  /* ==========================================================
      DELETE PROJECT
-  ============================================================ */
+  ========================================================== */
 
   async function handleDelete(
     id: string,
@@ -1152,9 +1248,9 @@ export default function ProjectsPage() {
     }
   }
 
-  /* ============================================================
+  /* ==========================================================
      OPEN PROJECT FILE
-  ============================================================ */
+  ========================================================== */
 
   function openProjectFile(
     id: string,
@@ -1174,29 +1270,9 @@ export default function ProjectsPage() {
     );
   }
 
-  /* ============================================================
-     GET TEAM MEMBER DATA
-     
-     Used to display additional data next to selected names.
-  ============================================================ */
-
-  function getTeamMember(
-    name: string,
-  ) {
-    return allTeamMembers.find(
-      (member) =>
-        normalizeTeamMemberName(
-          member.name,
-        ) ===
-        normalizeTeamMemberName(
-          name,
-        ),
-    );
-  }
-
-  /* ============================================================
+  /* ==========================================================
      RENDER
-  ============================================================ */
+  ========================================================== */
 
   return (
     <DashboardShell>
@@ -1327,7 +1403,7 @@ export default function ProjectsPage() {
         </TabsList>
 
         {/* ====================================================
-           KANBAN
+           KANBAN BOARD
         ==================================================== */}
 
         <TabsContent
@@ -1611,7 +1687,7 @@ export default function ProjectsPage() {
         </TabsContent>
 
         {/* ====================================================
-           LIST
+           LIST VIEW
         ==================================================== */}
 
         <TabsContent
@@ -2276,15 +2352,25 @@ export default function ProjectsPage() {
             {/* ==================================================
                PROJECT TEAM
                
-               EDIT + CREATE USE THE SAME TEAM SELECTOR.
+               SAME SELECTOR FOR:
                
-               Members come from:
+               New Project
+               +
+               Edit Project
+               
+               Data source:
                
                fetchTeam()
-                 ↓
-               team_members
+                    ↓
+               public.team_members
                
-               No manual comma-separated typing.
+               Edit Project:
+               
+               project.team
+                    ↓
+               match against team_members
+                    ↓
+               automatically checked
             ================================================== */}
 
             <div className="space-y-2">
@@ -2296,7 +2382,7 @@ export default function ProjectsPage() {
               <div className="relative">
 
                 {/* ==================================================
-                   DROPDOWN BUTTON
+                   SELECT MEMBERS BUTTON
                 ================================================== */}
 
                 <button
@@ -2335,15 +2421,19 @@ export default function ProjectsPage() {
                     ) : (
 
                       <span className="truncate">
+
                         {
                           form.team.length
                         }{' '}
+
                         team member
                         {form.team.length !==
                         1
                           ? 's'
                           : ''}{' '}
+
                         selected
+
                       </span>
 
                     )}
@@ -2361,7 +2451,7 @@ export default function ProjectsPage() {
                 </button>
 
                 {/* ==================================================
-                   SELECTED MEMBERS
+                   SELECTED MEMBER CHIPS
                 ================================================== */}
 
                 {form.team.length >
@@ -2431,7 +2521,7 @@ export default function ProjectsPage() {
                 )}
 
                 {/* ==================================================
-                   TEAM MEMBER MENU
+                   TEAM MEMBER DROPDOWN
                 ================================================== */}
 
                 {teamMenuOpen && (
@@ -2470,6 +2560,14 @@ export default function ProjectsPage() {
                           member,
                         ) => {
 
+                          /*
+                           * Determine whether this member is
+                           * currently selected.
+                           *
+                           * This is what makes existing
+                           * Project Team members appear checked
+                           * when Edit Project is opened.
+                           */
                           const selected =
                             form.team.some(
                               (name) =>
@@ -2506,7 +2604,7 @@ export default function ProjectsPage() {
                               )}
                             >
 
-                              {/* CHECK */}
+                              {/* CHECKBOX */}
 
                               <div
                                 className={cn(
@@ -2561,6 +2659,7 @@ export default function ProjectsPage() {
                                 <span
                                   className={cn(
                                     'hidden text-[10px] sm:block',
+
                                     member.availability ===
                                       'Available'
                                       ? 'text-emerald-600'
