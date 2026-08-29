@@ -13,6 +13,10 @@ import {
   Clock,
   AlertCircle,
   Trash2,
+  Check,
+  ChevronDown,
+  X,
+  Users,
 } from 'lucide-react';
 
 import {
@@ -77,6 +81,7 @@ import {
   insertProject,
   updateProject,
   deleteProject,
+  fetchTeam,
 } from '@/lib/api';
 
 import {
@@ -105,19 +110,14 @@ const stages: ProjectStage[] = [
   'Completed',
 ];
 
-const stageAccent: Record<
-  string,
-  string
-> = {
+const stageAccent: Record<string, string> = {
   Discovery: 'bg-blue-500',
   Planning: 'bg-indigo-500',
-  'Content Creation':
-    'bg-violet-500',
+  'Content Creation': 'bg-violet-500',
   Design: 'bg-purple-500',
   Development: 'bg-amber-500',
   Review: 'bg-orange-500',
-  'Client Approval':
-    'bg-teal-500',
+  'Client Approval': 'bg-teal-500',
   Completed: 'bg-emerald-500',
 };
 
@@ -137,6 +137,23 @@ const priorityOptions = [
 ] as const;
 
 /* ============================================================
+   TEAM MEMBER TYPE
+============================================================ */
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role?: string;
+  email?: string;
+  avatar?: string;
+  availability?: string;
+  activeProjects?: number;
+  tasksAssigned?: number;
+  tasksCompleted?: number;
+  utilization?: number;
+}
+
+/* ============================================================
    PROJECT FORM
 ============================================================ */
 
@@ -148,7 +165,13 @@ interface ProjectForm {
   stage: ProjectStage;
   progress: number;
   deadline: string;
-  team: string;
+
+  /*
+   * IMPORTANT:
+   * Team is now an ARRAY of selected member names.
+   */
+  team: string[];
+
   priority:
     | 'Low'
     | 'Medium'
@@ -157,8 +180,7 @@ interface ProjectForm {
 
 function getDefaultDeadline() {
   return new Date(
-    Date.now() +
-      14 * 86400000,
+    Date.now() + 14 * 86400000,
   )
     .toISOString()
     .split('T')[0];
@@ -168,26 +190,60 @@ const emptyForm: ProjectForm = {
   name: '',
   client: '',
   client_id: null,
-  serviceType:
-    'Social Media',
+  serviceType: 'Social Media',
   stage: 'Discovery',
   progress: 0,
-  deadline:
-    getDefaultDeadline(),
-  team: '',
+  deadline: getDefaultDeadline(),
+  team: [],
   priority: 'Medium',
 };
 
-function getInitials(
-  name: string,
-) {
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function getInitials(name: string) {
   return name
     .split(/\s+/)
-    .map(
-      (part) => part[0],
-    )
+    .filter(Boolean)
+    .map((part) => part[0])
     .join('')
-    .slice(0, 2);
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+/*
+ * Handles old/project data safely.
+ *
+ * Your database may already contain:
+ *
+ * ["Andrea Lim", "Kai Santos"]
+ *
+ * Or, in case an older record has a string:
+ *
+ * "Andrea Lim, Kai Santos"
+ */
+function normalizeTeam(
+  team: unknown,
+): string[] {
+  if (Array.isArray(team)) {
+    return team
+      .map((member) =>
+        String(member).trim(),
+      )
+      .filter(Boolean);
+  }
+
+  if (typeof team === 'string') {
+    return team
+      .split(',')
+      .map((member) =>
+        member.trim(),
+      )
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 /* ============================================================
@@ -195,21 +251,20 @@ function getInitials(
 ============================================================ */
 
 export default function ProjectsPage() {
-  const router =
-    useRouter();
+  const router = useRouter();
 
   const searchParams =
     useSearchParams();
 
   const clientId =
-    searchParams.get(
-      'clientId',
-    );
+    searchParams.get('clientId');
 
   const clientName =
-    searchParams.get(
-      'client',
-    ) || '';
+    searchParams.get('client') || '';
+
+  /* ==========================================================
+     PROJECT DATA
+  ========================================================== */
 
   const [
     refreshKey,
@@ -224,11 +279,35 @@ export default function ProjectsPage() {
     [refreshKey],
   );
 
+  /*
+   * TEAM DATA
+   *
+   * This uses the SAME fetchTeam function
+   * already used by the Team page.
+   */
+  const {
+    data: team,
+    loading: teamLoading,
+  } = useFetch(
+    fetchTeam,
+    [refreshKey],
+  );
+
+  const allProjects =
+    projects ?? [];
+
+  const allMembers =
+    (team ?? []) as TeamMember[];
+
   function refetch() {
     setRefreshKey(
       (key) => key + 1,
     );
   }
+
+  /* ==========================================================
+     DIALOG STATE
+  ========================================================== */
 
   const [
     open,
@@ -254,17 +333,129 @@ export default function ProjectsPage() {
     emptyForm,
   );
 
+  /*
+   * Team dropdown state.
+   */
+  const [
+    teamDropdownOpen,
+    setTeamDropdownOpen,
+  ] = React.useState(false);
+
+  /*
+   * Search inside team selector.
+   */
+  const [
+    teamSearch,
+    setTeamSearch,
+  ] = React.useState('');
+
   const [
     initializedFromClient,
     setInitializedFromClient,
   ] = React.useState(false);
 
-  const allProjects =
-    projects ?? [];
+  /* ==========================================================
+     TEAM FILTER
+  ========================================================== */
 
-  /* ============================================================
+  const filteredTeamMembers =
+    allMembers.filter(
+      (member) => {
+        const search =
+          teamSearch
+            .trim()
+            .toLowerCase();
+
+        if (!search) {
+          return true;
+        }
+
+        return (
+          member.name
+            ?.toLowerCase()
+            .includes(search) ||
+          member.role
+            ?.toLowerCase()
+            .includes(search) ||
+          member.email
+            ?.toLowerCase()
+            .includes(search)
+        );
+      },
+    );
+
+  /* ==========================================================
+     TEAM SELECTION
+  ========================================================== */
+
+  function isTeamMemberSelected(
+    memberName: string,
+  ) {
+    return form.team.includes(
+      memberName,
+    );
+  }
+
+  function toggleTeamMember(
+    member: TeamMember,
+  ) {
+    setForm(
+      (current) => {
+        const alreadySelected =
+          current.team.includes(
+            member.name,
+          );
+
+        if (alreadySelected) {
+          return {
+            ...current,
+            team:
+              current.team.filter(
+                (name) =>
+                  name !==
+                  member.name,
+              ),
+          };
+        }
+
+        return {
+          ...current,
+          team: [
+            ...current.team,
+            member.name,
+          ],
+        };
+      },
+    );
+  }
+
+  function removeTeamMember(
+    memberName: string,
+  ) {
+    setForm(
+      (current) => ({
+        ...current,
+        team:
+          current.team.filter(
+            (name) =>
+              name !== memberName,
+          ),
+      }),
+    );
+  }
+
+  function clearTeamMembers() {
+    setForm(
+      (current) => ({
+        ...current,
+        team: [],
+      }),
+    );
+  }
+
+  /* ==========================================================
      KPIs
-  ============================================================ */
+  ========================================================== */
 
   const inProgress =
     allProjects.filter(
@@ -289,21 +480,9 @@ export default function ProjectsPage() {
           'Completed',
     ).length;
 
-  /* ============================================================
+  /* ==========================================================
      AUTO OPEN NEW PROJECT
-     
-     THIS IS THE IMPORTANT FIX.
-     
-     When coming from:
-     
-     /projects?clientId=C-001&client=Bloom%20Skincare
-     
-     automatically:
-     
-     1. puts Bloom Skincare in Client
-     2. stores C-001 in client_id
-     3. opens New Project dialog
-  ============================================================ */
+  ========================================================== */
 
   React.useEffect(() => {
     if (
@@ -326,7 +505,14 @@ export default function ProjectsPage() {
           clientId,
         deadline:
           getDefaultDeadline(),
+        team: [],
       });
+
+      setTeamDropdownOpen(
+        false,
+      );
+
+      setTeamSearch('');
 
       setOpen(true);
 
@@ -340,9 +526,9 @@ export default function ProjectsPage() {
     initializedFromClient,
   ]);
 
-  /* ============================================================
+  /* ==========================================================
      ADD PROJECT
-  ============================================================ */
+  ========================================================== */
 
   function openAdd() {
     setEditId(null);
@@ -355,14 +541,21 @@ export default function ProjectsPage() {
         clientId || null,
       deadline:
         getDefaultDeadline(),
+      team: [],
     });
+
+    setTeamDropdownOpen(
+      false,
+    );
+
+    setTeamSearch('');
 
     setOpen(true);
   }
 
-  /* ============================================================
+  /* ==========================================================
      EDIT PROJECT
-  ============================================================ */
+  ========================================================== */
 
   function openEdit(
     id: string,
@@ -380,48 +573,76 @@ export default function ProjectsPage() {
       return;
     }
 
+    const selectedTeam =
+      normalizeTeam(
+        project.team,
+      );
+
     setEditId(id);
 
     setForm({
       name:
         project.name || '',
+
       client:
         project.client || '',
+
       client_id:
         project.client_id ??
         null,
+
       serviceType:
         project.serviceType ||
         'Social Media',
+
       stage:
         project.stage ||
         'Discovery',
+
       progress:
         Number(
           project.progress,
         ) || 0,
+
       deadline:
         project.deadline ||
         getDefaultDeadline(),
+
       team:
-        Array.isArray(
-          project.team,
-        )
-          ? project.team.join(
-              ', ',
-            )
-          : '',
+        selectedTeam,
+
       priority:
         project.priority ||
         'Medium',
     });
 
+    setTeamDropdownOpen(
+      false,
+    );
+
+    setTeamSearch('');
+
     setOpen(true);
   }
 
-  /* ============================================================
+  /* ==========================================================
+     CLOSE DIALOG
+  ========================================================== */
+
+  function closeDialog() {
+    setOpen(false);
+    setEditId(null);
+
+    setTeamDropdownOpen(
+      false,
+    );
+
+    setTeamSearch('');
+  }
+
+  /* ==========================================================
      SAVE PROJECT
-  ============================================================ */
+  ========================================================== */
 
   async function handleSubmit(
     event: React.FormEvent,
@@ -443,7 +664,8 @@ export default function ProjectsPage() {
     }
 
     /*
-     * A NEW project created from a client must have client_id.
+     * A NEW project created from a client
+     * must have client_id.
      */
     if (
       !editId &&
@@ -462,6 +684,14 @@ export default function ProjectsPage() {
     setSubmitting(true);
 
     try {
+      /*
+       * IMPORTANT:
+       *
+       * Team is already an array.
+       *
+       * We DO NOT split comma-separated
+       * text anymore.
+       */
       const payload = {
         name:
           form.name.trim(),
@@ -469,9 +699,6 @@ export default function ProjectsPage() {
         client:
           form.client.trim(),
 
-        /*
-         * REAL DATABASE RELATIONSHIP
-         */
         client_id:
           form.client_id,
 
@@ -490,24 +717,17 @@ export default function ProjectsPage() {
           form.deadline,
 
         team:
-          form.team
-            .split(',')
-            .map(
-              (member) =>
-                member.trim(),
-            )
-            .filter(
-              Boolean,
-            ),
+          form.team,
 
         priority:
           form.priority,
       };
 
+      /* ======================================================
+         UPDATE
+      ====================================================== */
+
       if (editId) {
-        /*
-         * UPDATE
-         */
         const updated =
           await updateProject(
             editId,
@@ -518,49 +738,52 @@ export default function ProjectsPage() {
           'Project updated successfully.',
         );
 
-        /*
-         * Keep the updated data
-         * in the form.
-         */
         setForm({
           name:
             updated.name ||
             '',
+
           client:
             updated.client ||
             '',
+
           client_id:
             updated.client_id ??
             null,
+
           serviceType:
             updated.serviceType ||
             'Social Media',
+
           stage:
             updated.stage ||
             'Discovery',
+
           progress:
             Number(
               updated.progress,
             ) || 0,
+
           deadline:
             updated.deadline ||
-            '',
+            getDefaultDeadline(),
+
           team:
-            Array.isArray(
+            normalizeTeam(
               updated.team,
-            )
-              ? updated.team.join(
-                  ', ',
-                )
-              : '',
+            ),
+
           priority:
             updated.priority ||
             'Medium',
         });
-      } else {
-        /*
-         * CREATE
-         */
+      }
+
+      /* ======================================================
+         CREATE
+      ====================================================== */
+
+      else {
         const created =
           await insertProject(
             payload,
@@ -575,17 +798,20 @@ export default function ProjectsPage() {
         );
 
         /*
-         * After creating, immediately
-         * open the Project File page.
-         *
-         * Example:
-         * /projects/P-311
+         * Open Project File page
+         * after successful creation.
          */
         if (
           created?.id
         ) {
           setOpen(false);
           setEditId(null);
+
+          setTeamDropdownOpen(
+            false,
+          );
+
+          setTeamSearch('');
 
           refetch();
 
@@ -603,6 +829,12 @@ export default function ProjectsPage() {
 
       setOpen(false);
       setEditId(null);
+
+      setTeamDropdownOpen(
+        false,
+      );
+
+      setTeamSearch('');
 
       refetch();
     } catch (
@@ -626,9 +858,9 @@ export default function ProjectsPage() {
     }
   }
 
-  /* ============================================================
+  /* ==========================================================
      DELETE PROJECT
-  ============================================================ */
+  ========================================================== */
 
   async function handleDelete(
     id: string,
@@ -665,12 +897,14 @@ export default function ProjectsPage() {
         'Project deleted successfully.',
       );
 
-      /*
-       * If deleting from the dialog,
-       * close it.
-       */
       setOpen(false);
       setEditId(null);
+
+      setTeamDropdownOpen(
+        false,
+      );
+
+      setTeamSearch('');
 
       refetch();
     } catch (
@@ -692,9 +926,9 @@ export default function ProjectsPage() {
     }
   }
 
-  /* ============================================================
+  /* ==========================================================
      OPEN PROJECT FILE
-  ============================================================ */
+  ========================================================== */
 
   function openProjectFile(
     id: string,
@@ -713,9 +947,9 @@ export default function ProjectsPage() {
     );
   }
 
-  /* ============================================================
+  /* ==========================================================
      RENDER
-  ============================================================ */
+  ========================================================== */
 
   return (
     <DashboardShell>
@@ -988,43 +1222,41 @@ export default function ProjectsPage() {
 
                                   <div className="mt-3 flex items-center justify-between">
                                     <div className="flex -space-x-1.5">
-                                      {Array.isArray(
+                                      {normalizeTeam(
                                         project.team,
-                                      ) &&
-                                        project.team
-                                          .slice(
-                                            0,
-                                            3,
-                                          )
-                                          .map(
-                                            (
-                                              member,
-                                            ) => (
-                                              <Avatar
-                                                key={
-                                                  member
-                                                }
-                                                initials={getInitials(
-                                                  member,
-                                                )}
-                                                className="h-6 w-6 border-2 border-card text-[9px]"
-                                              />
-                                            ),
-                                          )}
-
-                                      {Array.isArray(
-                                        project.team,
-                                      ) &&
-                                        project.team.length >
-                                          3 && (
-                                          <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
-                                            +
-                                            {
-                                              project.team.length -
-                                              3
-                                            }
-                                          </div>
+                                      )
+                                        .slice(
+                                          0,
+                                          3,
+                                        )
+                                        .map(
+                                          (
+                                            member,
+                                          ) => (
+                                            <Avatar
+                                              key={
+                                                member
+                                              }
+                                              initials={getInitials(
+                                                member,
+                                              )}
+                                              className="h-6 w-6 border-2 border-card text-[9px]"
+                                            />
+                                          ),
                                         )}
+
+                                      {normalizeTeam(
+                                        project.team,
+                                      ).length >
+                                        3 && (
+                                        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
+                                          +
+                                          {normalizeTeam(
+                                            project.team,
+                                          ).length -
+                                            3}
+                                        </div>
+                                      )}
                                     </div>
 
                                     <PriorityBadge
@@ -1182,29 +1414,28 @@ export default function ProjectsPage() {
 
                         <TableCell>
                           <div className="flex -space-x-1.5">
-                            {Array.isArray(
+                            {normalizeTeam(
                               project.team,
-                            ) &&
-                              project.team
-                                .slice(
-                                  0,
-                                  3,
-                                )
-                                .map(
-                                  (
-                                    member,
-                                  ) => (
-                                    <Avatar
-                                      key={
-                                        member
-                                      }
-                                      initials={getInitials(
-                                        member,
-                                      )}
-                                      className="h-6 w-6 border-2 border-card text-[9px]"
-                                    />
-                                  ),
-                                )}
+                            )
+                              .slice(
+                                0,
+                                3,
+                              )
+                              .map(
+                                (
+                                  member,
+                                ) => (
+                                  <Avatar
+                                    key={
+                                      member
+                                    }
+                                    initials={getInitials(
+                                      member,
+                                    )}
+                                    className="h-6 w-6 border-2 border-card text-[9px]"
+                                  />
+                                ),
+                              )}
                           </div>
                         </TableCell>
 
@@ -1237,9 +1468,15 @@ export default function ProjectsPage() {
 
       <Dialog
         open={open}
-        onOpenChange={
-          setOpen
-        }
+        onOpenChange={(
+          value,
+        ) => {
+          if (!value) {
+            closeDialog();
+          } else {
+            setOpen(true);
+          }
+        }}
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -1256,6 +1493,10 @@ export default function ProjectsPage() {
             }
             className="space-y-4"
           >
+            {/* ==================================================
+               PROJECT NAME
+            ================================================== */}
+
             <div className="space-y-2">
               <Label htmlFor="project-name">
                 Project Name
@@ -1326,6 +1567,10 @@ export default function ProjectsPage() {
                 </p>
               )}
             </div>
+
+            {/* ==================================================
+               SERVICE / STAGE / PRIORITY / DEADLINE
+            ================================================== */}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -1491,6 +1736,10 @@ export default function ProjectsPage() {
               </div>
             </div>
 
+            {/* ==================================================
+               PROGRESS
+            ================================================== */}
+
             <div className="space-y-2">
               <Label>
                 Progress:{' '}
@@ -1521,30 +1770,278 @@ export default function ProjectsPage() {
               />
             </div>
 
+            {/* ==================================================
+               TEAM MEMBERS
+            ================================================== */}
+
             <div className="space-y-2">
-              <Label htmlFor="project-team">
-                Team (comma-separated
-                names)
+              <Label>
+                Team Members
               </Label>
 
-              <Input
-                id="project-team"
-                value={
-                  form.team
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setForm({
-                    ...form,
-                    team:
-                      event.target
-                        .value,
-                  })
-                }
-                placeholder="Andrea Lim, Kai Santos"
-              />
+              {/* SELECTED MEMBERS */}
+
+              {form.team.length >
+                0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {form.team.map(
+                    (
+                      memberName,
+                    ) => {
+                      const member =
+                        allMembers.find(
+                          (
+                            item,
+                          ) =>
+                            item.name ===
+                            memberName,
+                        );
+
+                      return (
+                        <Badge
+                          key={
+                            memberName
+                          }
+                          variant="secondary"
+                          className="gap-1 pr-1"
+                        >
+                          <span>
+                            {
+                              memberName
+                            }
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeTeamMember(
+                                memberName,
+                              )
+                            }
+                            className="ml-0.5 rounded-full p-0.5 hover:bg-muted"
+                            aria-label={`Remove ${memberName}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    },
+                  )}
+                </div>
+              )}
+
+              {/* TEAM SELECTOR */}
+
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between font-normal"
+                  onClick={() =>
+                    setTeamDropdownOpen(
+                      (
+                        value,
+                      ) =>
+                        !value,
+                    )
+                  }
+                  disabled={
+                    teamLoading
+                  }
+                >
+                  <span className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+
+                    {teamLoading
+                      ? 'Loading team members...'
+                      : form.team
+                          .length >
+                        0
+                      ? `${form.team.length} team member${
+                          form.team.length >
+                          1
+                            ? 's'
+                            : ''
+                        } selected`
+                      : 'Select team members'}
+                  </span>
+
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 text-muted-foreground transition-transform',
+                      teamDropdownOpen &&
+                        'rotate-180',
+                    )}
+                  />
+                </Button>
+
+                {teamDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
+                    {/* SEARCH */}
+
+                    <div className="border-b p-2">
+                      <Input
+                        value={
+                          teamSearch
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setTeamSearch(
+                            event
+                              .target
+                              .value,
+                          )
+                        }
+                        placeholder="Search team members..."
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* MEMBERS */}
+
+                    <div className="max-h-60 overflow-y-auto p-1">
+                      {teamLoading ? (
+                        <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          Loading team members...
+                        </div>
+                      ) : allMembers.length ===
+                        0 ? (
+                        <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          No team members found.
+                        </div>
+                      ) : filteredTeamMembers.length ===
+                        0 ? (
+                        <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                          No matching team members.
+                        </div>
+                      ) : (
+                        filteredTeamMembers.map(
+                          (
+                            member,
+                          ) => {
+                            const selected =
+                              isTeamMemberSelected(
+                                member.name,
+                              );
+
+                            return (
+                              <button
+                                key={
+                                  member.id
+                                }
+                                type="button"
+                                className={cn(
+                                  'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted',
+                                  selected &&
+                                    'bg-muted/70',
+                                )}
+                                onClick={() =>
+                                  toggleTeamMember(
+                                    member,
+                                  )
+                                }
+                              >
+                                {/* AVATAR */}
+
+                                <Avatar
+                                  initials={getInitials(
+                                    member.name,
+                                  )}
+                                  className="h-8 w-8 shrink-0"
+                                />
+
+                                {/* MEMBER INFO */}
+
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">
+                                    {
+                                      member.name
+                                    }
+                                  </p>
+
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {
+                                      member.role ||
+                                      member.email ||
+                                      ''
+                                    }
+                                  </p>
+                                </div>
+
+                                {/* CHECK */}
+
+                                <div
+                                  className={cn(
+                                    'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+                                    selected
+                                      ? 'border-primary bg-primary text-primary-foreground'
+                                      : 'border-muted-foreground/30',
+                                  )}
+                                >
+                                  {selected && (
+                                    <Check className="h-3.5 w-3.5" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          },
+                        )
+                      )}
+                    </div>
+
+                    {/* FOOTER */}
+
+                    <div className="flex items-center justify-between border-t px-3 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        {form.team.length}{' '}
+                        selected
+                      </p>
+
+                      {form.team.length >
+                        0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={
+                            clearTeamMembers
+                          }
+                        >
+                          Clear
+                        </Button>
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setTeamDropdownOpen(
+                            false,
+                          );
+                          setTeamSearch(
+                            '',
+                          );
+                        }}
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Select one or multiple
+                members from your existing
+                Team page.
+              </p>
             </div>
+
+            {/* ==================================================
+               FOOTER
+            ================================================== */}
 
             <DialogFooter>
               {editId && (
@@ -1569,10 +2066,9 @@ export default function ProjectsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  setOpen(false);
-                  setEditId(null);
-                }}
+                onClick={
+                  closeDialog
+                }
               >
                 Cancel
               </Button>
