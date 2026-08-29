@@ -258,6 +258,21 @@ export default function TeamPage() {
   const allMembers =
     team ?? [];
 
+  /*
+   * Active members are used for the average utilization KPI.
+   * Members on leave are excluded from the average.
+   */
+  const activeMembers =
+    allMembers.filter(
+      (member) =>
+        member.availability !==
+        'On Leave',
+    );
+
+  /* ==========================================================
+     KPI CALCULATIONS
+  ========================================================== */
+
   const totalProjects =
     allMembers.reduce(
       (
@@ -265,7 +280,9 @@ export default function TeamPage() {
         member,
       ) =>
         total +
-        member.activeProjects,
+        (Number(
+          member.activeProjects,
+        ) || 0),
       0,
     );
 
@@ -276,15 +293,10 @@ export default function TeamPage() {
         member,
       ) =>
         total +
-        member.tasksAssigned,
+        (Number(
+          member.tasksAssigned,
+        ) || 0),
       0,
-    );
-
-  const activeMembers =
-    allMembers.filter(
-      (member) =>
-        member.availability !==
-        'On Leave',
     );
 
   const avgUtilization =
@@ -297,32 +309,114 @@ export default function TeamPage() {
               member,
             ) =>
               total +
-              member.utilization,
+              (Number(
+                member.utilization,
+              ) || 0),
             0,
           ) /
             activeMembers.length,
         )
       : 0;
 
+  /* ==========================================================
+     WORKLOAD DISTRIBUTION DATA
+     
+     IMPORTANT:
+     Use ALL team members here instead of activeMembers.
+     
+     This means:
+     - Available → shown
+     - Busy → shown
+     - On Leave → also shown
+     
+     The chart therefore always represents the entire team.
+  ========================================================== */
+
   const utilizationData =
-    activeMembers.map(
-      (member) => ({
-        name:
-          member.name.split(
-            ' ',
-          )[0],
-        utilization:
-          member.utilization,
-        fill:
-          member.utilization >
-          85
-            ? 'hsl(0, 72%, 51%)'
-            : member.utilization >
-                70
-              ? 'hsl(38, 92%, 50%)'
-              : 'hsl(142, 71%, 45%)',
-      }),
-    );
+    React.useMemo(() => {
+      if (
+        !allMembers ||
+        allMembers.length === 0
+      ) {
+        return [];
+      }
+
+      return allMembers
+        .map(
+          (
+            member,
+          ) => {
+            const utilization =
+              Number(
+                member.utilization,
+              ) || 0;
+
+            const safeUtilization =
+              Math.min(
+                100,
+                Math.max(
+                  0,
+                  utilization,
+                ),
+              );
+
+            let fill =
+              'hsl(142, 71%, 45%)';
+
+            if (
+              safeUtilization >
+              85
+            ) {
+              fill =
+                'hsl(0, 72%, 51%)';
+            } else if (
+              safeUtilization >
+              70
+            ) {
+              fill =
+                'hsl(38, 92%, 50%)';
+            }
+
+            return {
+              id:
+                member.id,
+
+              name:
+                member.name ||
+                'Unknown',
+
+              shortName:
+                member.name
+                  ? member.name
+                      .split(
+                        ' ',
+                      )[0]
+                  : 'Unknown',
+
+              utilization:
+                safeUtilization,
+
+              availability:
+                member.availability ||
+                'Unknown',
+
+              role:
+                member.role ||
+                'Team Member',
+
+              fill,
+            };
+          },
+        )
+        .sort(
+          (
+            a,
+            b,
+          ) =>
+            b.utilization -
+            a.utilization,
+        );
+    }, [allMembers]);
 
   /* ==========================================================
      HELPERS
@@ -422,31 +516,33 @@ export default function TeamPage() {
       email:
         member.email,
 
-      /*
-       * Existing passwords are NEVER loaded.
-       */
       password: '',
 
       activeProjects:
         String(
-          member.activeProjects,
+          member.activeProjects ??
+            0,
         ),
 
       tasksAssigned:
         String(
-          member.tasksAssigned,
+          member.tasksAssigned ??
+            0,
         ),
 
       tasksCompleted:
         String(
-          member.tasksCompleted,
+          member.tasksCompleted ??
+            0,
         ),
 
       availability:
         member.availability,
 
       utilization:
-        member.utilization,
+        Number(
+          member.utilization,
+        ) || 0,
     });
 
     setOpen(true);
@@ -528,7 +624,9 @@ export default function TeamPage() {
             form.availability,
 
           utilization:
-            form.utilization,
+            Number(
+              form.utilization,
+            ) || 0,
         };
 
         await updateTeamMember(
@@ -600,7 +698,9 @@ export default function TeamPage() {
                 ) || 0,
 
               utilization:
-                form.utilization,
+                Number(
+                  form.utilization,
+                ) || 0,
             }),
           },
         );
@@ -851,8 +951,12 @@ export default function TeamPage() {
          TEAM + WORKLOAD
       ====================================================== */}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="mt-6 grid min-w-0 gap-4 lg:grid-cols-3">
+        {/* ====================================================
+           TEAM MEMBERS
+        ==================================================== */}
+
+        <Card className="min-w-0 lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">
               Team Members
@@ -1013,10 +1117,14 @@ export default function TeamPage() {
                               <div
                                 className={cn(
                                   'h-full rounded-full',
-                                  member.utilization >
+                                  Number(
+                                    member.utilization,
+                                  ) >
                                     85
                                     ? 'bg-rose-500'
-                                    : member.utilization >
+                                    : Number(
+                                          member.utilization,
+                                        ) >
                                         70
                                       ? 'bg-amber-500'
                                       : 'bg-emerald-500',
@@ -1026,7 +1134,10 @@ export default function TeamPage() {
                                     100,
                                     Math.max(
                                       0,
-                                      member.utilization,
+                                      Number(
+                                        member.utilization,
+                                      ) ||
+                                        0,
                                     ),
                                   )}%`,
                                 }}
@@ -1081,120 +1192,145 @@ export default function TeamPage() {
            WORKLOAD CHART
         ==================================================== */}
 
-        <Card>
+        <Card className="min-w-0 overflow-hidden">
           <CardHeader>
             <CardTitle className="text-base">
               Workload Distribution
             </CardTitle>
           </CardHeader>
 
-          <CardContent>
-            {utilizationData.length ===
-            0 ? (
-              <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+          <CardContent className="min-w-0">
+            {loading ? (
+              <div className="flex h-[280px] items-center justify-center">
+                <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+              </div>
+            ) : utilizationData.length ===
+              0 ? (
+              <div className="flex h-[280px] items-center justify-center text-center text-sm text-muted-foreground">
                 No workload data available.
               </div>
             ) : (
-              <ResponsiveContainer
-                width="100%"
-                height={280}
-              >
-                <BarChart
-                  data={
-                    utilizationData
-                  }
-                  layout="vertical"
-                  margin={{
-                    top: 5,
-                    right: 10,
-                    left: 0,
-                    bottom: 0,
-                  }}
+              <div className="h-[280px] w-full min-w-0">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={0}
+                  minHeight={0}
                 >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--border))"
-                    horizontal={
-                      false
+                  <BarChart
+                    data={
+                      utilizationData
                     }
-                  />
-
-                  <XAxis
-                    type="number"
-                    domain={[
-                      0,
-                      100,
-                    ]}
-                    tick={{
-                      fontSize: 11,
+                    layout="vertical"
+                    margin={{
+                      top: 5,
+                      right: 15,
+                      left: 0,
+                      bottom: 5,
                     }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickLine={
-                      false
-                    }
-                    axisLine={
-                      false
-                    }
-                    unit="%"
-                  />
-
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{
-                      fontSize: 11,
-                    }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickLine={
-                      false
-                    }
-                    axisLine={
-                      false
-                    }
-                    width={50}
-                  />
-
-                  <Tooltip
-                    cursor={{
-                      fill: 'hsl(var(--muted))',
-                    }}
-                    contentStyle={{
-                      borderRadius:
-                        '8px',
-                      border:
-                        '1px solid hsl(var(--border))',
-                      fontSize:
-                        '12px',
-                    }}
-                  />
-
-                  <Bar
-                    dataKey="utilization"
-                    radius={[
-                      0,
-                      4,
-                      4,
-                      0,
-                    ]}
                   >
-                    {utilizationData.map(
-                      (
-                        entry,
-                        index,
-                      ) => (
-                        <Cell
-                          key={
-                            index
-                          }
-                          fill={
-                            entry.fill
-                          }
-                        />
-                      ),
-                    )}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                      horizontal={
+                        false
+                      }
+                    />
+
+                    <XAxis
+                      type="number"
+                      domain={[
+                        0,
+                        100,
+                      ]}
+                      tick={{
+                        fontSize: 11,
+                      }}
+                      stroke="hsl(var(--muted-foreground))"
+                      tickLine={
+                        false
+                      }
+                      axisLine={
+                        false
+                      }
+                      unit="%"
+                    />
+
+                    <YAxis
+                      type="category"
+                      dataKey="shortName"
+                      tick={{
+                        fontSize: 11,
+                      }}
+                      stroke="hsl(var(--muted-foreground))"
+                      tickLine={
+                        false
+                      }
+                      axisLine={
+                        false
+                      }
+                      width={65}
+                    />
+
+                    <Tooltip
+                      cursor={{
+                        fill: 'hsl(var(--muted))',
+                      }}
+                      contentStyle={{
+                        borderRadius:
+                          '8px',
+                        border:
+                          '1px solid hsl(var(--border))',
+                        backgroundColor:
+                          'hsl(var(--background))',
+                        fontSize:
+                          '12px',
+                      }}
+                      formatter={(
+                        value,
+                      ) => [
+                        `${value}%`,
+                        'Utilization',
+                      ]}
+                      labelFormatter={(
+                        label,
+                      ) =>
+                        String(
+                          label,
+                        )
+                      }
+                    />
+
+                    <Bar
+                      dataKey="utilization"
+                      radius={[
+                        0,
+                        4,
+                        4,
+                        0,
+                      ]}
+                      maxBarSize={28}
+                    >
+                      {utilizationData.map(
+                        (
+                          entry,
+                          index,
+                        ) => (
+                          <Cell
+                            key={
+                              entry.id ||
+                              index
+                            }
+                            fill={
+                              entry.fill
+                            }
+                          />
+                        ),
+                      )}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </CardContent>
         </Card>
