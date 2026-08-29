@@ -487,19 +487,7 @@ export interface Project {
   stage: ProjectStage;
   progress: number;
   deadline: string;
-
-  /*
-   * Project team members.
-   *
-   * This remains string[] for compatibility with the
-   * existing Projects page and database team field.
-   *
-   * The Projects page should populate this field by
-   * selecting existing members from the Supabase
-   * team_members table instead of manually typing names.
-   */
   team: string[];
-
   priority:
     | 'Low'
     | 'Medium'
@@ -1196,15 +1184,6 @@ export interface TeamMember {
     | 'Busy'
     | 'On Leave';
   utilization: number;
-
-  /*
-   * Supabase team_members fields.
-   *
-   * These fields allow the Team page and Projects page
-   * to work with the actual team_members records.
-   */
-  created_at?: string;
-  auth_user_id?: string | null;
 }
 
 export const team: TeamMember[] = [
@@ -1857,7 +1836,7 @@ export type WebsiteContentRecord =
   | WebsiteService
   | WebsiteTestimonial
   | WebsiteFAQ;
-
+  
 /* ============================================================
    NAVIGATION
 ============================================================ */
@@ -1982,6 +1961,11 @@ export const navGroups = [
       {
         label: 'Website Requests',
         href: '/website-requests',
+        icon: 'Globe',
+      },
+            {
+        label: 'Website Content',
+        href: '/website-content',
         icon: 'Globe',
       },
     ],
