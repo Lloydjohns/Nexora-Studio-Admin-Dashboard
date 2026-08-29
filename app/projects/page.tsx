@@ -189,16 +189,6 @@ interface ProjectForm {
 
   deadline: string;
 
-  /*
-   * Team contains the selected team-member names.
-   *
-   * Example:
-   *
-   * [
-   *   "Andrea Lim",
-   *   "Kai Santos"
-   * ]
-   */
   team: string[];
 
   priority:
@@ -333,17 +323,10 @@ export default function ProjectsPage() {
   /* ==========================================================
      TEAM DATA
      
-     fetchTeam() reads from the existing Team page data source:
+     IMPORTANT:
      
-     public.team_members
-     
-     The same records are used by:
-     
-     Edit Project
-        ↓
-     Project Team
-        ↓
-     Select team members
+     This uses the SAME fetchTeam() source used by the
+     Team page.
   ========================================================== */
 
   const {
@@ -445,40 +428,80 @@ export default function ProjectsPage() {
     ).length;
 
   /* ==========================================================
-     NORMALIZE PROJECT TEAM
+     TEAM NORMALIZATION
      
      Supports:
      
-     1. New array:
-        ["Andrea Lim", "Kai Santos"]
+     1. ["Andrea Lim", "Kai Santos"]
      
-     2. Existing string:
-        "Andrea Lim, Kai Santos"
+     2. "Andrea Lim, Kai Santos"
      
-     This keeps existing projects compatible.
+     3. '["Andrea Lim","Kai Santos"]'
+     
+     4. [{ name: "Andrea Lim" }]
+     
+     5. [{ id: "T-01", name: "Andrea Lim" }]
+     
+     6. ["T-01", "T-02"]
+     
+     This is important for Edit Project because older
+     projects may have been saved in a different format.
   ========================================================== */
 
   function normalizeProjectTeam(
     value: unknown,
   ): string[] {
     if (
-      Array.isArray(value)
+      value === null ||
+      value === undefined
     ) {
-      return value
-        .map(
-          (member) =>
-            String(
-              member,
-            ).trim(),
-        )
-        .filter(Boolean);
+      return [];
     }
 
+    /*
+     * JSON string.
+     *
+     * Example:
+     *
+     * '["Andrea Lim","Kai Santos"]'
+     */
     if (
       typeof value ===
       'string'
     ) {
-      return value
+      const trimmed =
+        value.trim();
+
+      if (!trimmed) {
+        return [];
+      }
+
+      if (
+        trimmed.startsWith(
+          '[',
+        ) &&
+        trimmed.endsWith(
+          ']',
+        )
+      ) {
+        try {
+          const parsed =
+            JSON.parse(
+              trimmed,
+            );
+
+          return normalizeProjectTeam(
+            parsed,
+          );
+        } catch {
+          /*
+           * If parsing fails, continue
+           * with comma-separated handling.
+           */
+        }
+      }
+
+      return trimmed
         .split(',')
         .map(
           (member) =>
@@ -487,75 +510,246 @@ export default function ProjectsPage() {
         .filter(Boolean);
     }
 
+    /*
+     * Array handling.
+     */
+    if (
+      Array.isArray(value)
+    ) {
+      const result: string[] =
+        [];
+
+      value.forEach(
+        (member) => {
+          /*
+           * String member.
+           */
+          if (
+            typeof member ===
+            'string'
+          ) {
+            const name =
+              member.trim();
+
+            if (name) {
+              result.push(
+                name,
+              );
+            }
+
+            return;
+          }
+
+          /*
+           * Object member.
+           */
+          if (
+            member &&
+            typeof member ===
+              'object'
+          ) {
+            const objectMember =
+              member as {
+                id?: unknown;
+                name?: unknown;
+                full_name?: unknown;
+              };
+
+            const name =
+              objectMember.name ??
+              objectMember.full_name ??
+              objectMember.id;
+
+            if (
+              name !==
+                undefined &&
+              name !== null
+            ) {
+              const valueString =
+                String(
+                  name,
+                ).trim();
+
+              if (
+                valueString
+              ) {
+                result.push(
+                  valueString,
+                );
+              }
+            }
+          }
+        },
+      );
+
+      return result;
+    }
+
+    /*
+     * Single object.
+     */
+    if (
+      typeof value ===
+      'object'
+    ) {
+      const objectValue =
+        value as {
+          id?: unknown;
+          name?: unknown;
+          full_name?: unknown;
+          team?: unknown;
+        };
+
+      if (
+        objectValue.team !==
+        undefined
+      ) {
+        return normalizeProjectTeam(
+          objectValue.team,
+        );
+      }
+
+      const name =
+        objectValue.name ??
+        objectValue.full_name ??
+        objectValue.id;
+
+      if (
+        name !==
+          undefined &&
+        name !== null
+      ) {
+        return [
+          String(
+            name,
+          ).trim(),
+        ].filter(Boolean);
+      }
+    }
+
     return [];
   }
 
   /* ==========================================================
-     NORMALIZE TEAM MEMBER NAME
+     NORMALIZE TEAM MEMBER VALUE
   ========================================================== */
 
-  function normalizeTeamMemberName(
-    name: string,
+  function normalizeTeamMemberValue(
+    value: unknown,
   ) {
     return String(
-      name || '',
+      value ?? '',
     )
       .trim()
       .toLowerCase();
   }
 
   /* ==========================================================
-     FIND CURRENT TEAM MEMBER
+     FIND TEAM MEMBER
      
-     Matches by name so existing project data can be
-     connected to the current team_members records.
+     Matches by:
+     
+     1. ID
+     2. Name
+     3. Email
+  ========================================================== */
+
+  function findTeamMember(
+    value: unknown,
+  ) {
+    const normalized =
+      normalizeTeamMemberValue(
+        value,
+      );
+
+    if (!normalized) {
+      return undefined;
+    }
+
+    return allTeamMembers.find(
+      (member) => {
+        const id =
+          normalizeTeamMemberValue(
+            member.id,
+          );
+
+        const name =
+          normalizeTeamMemberValue(
+            member.name,
+          );
+
+        const email =
+          normalizeTeamMemberValue(
+            member.email,
+          );
+
+        return (
+          id === normalized ||
+          name === normalized ||
+          email === normalized
+        );
+      },
+    );
+  }
+
+  /* ==========================================================
+     FIND TEAM MEMBER BY NAME
   ========================================================== */
 
   function findTeamMemberByName(
     name: string,
   ) {
-    const normalized =
-      normalizeTeamMemberName(
-        name,
-      );
-
     return allTeamMembers.find(
       (member) =>
-        normalizeTeamMemberName(
+        normalizeTeamMemberValue(
           member.name,
-        ) === normalized,
+        ) ===
+        normalizeTeamMemberValue(
+          name,
+        ),
     );
   }
 
   /* ==========================================================
-     NORMALIZE EXISTING PROJECT TEAM
+     RESOLVE EXISTING PROJECT TEAM
      
-     IMPORTANT FOR EDIT PROJECT:
+     THIS IS THE MAIN EDIT-PROJECT FIX.
      
-     If the project already contains:
+     Example saved data:
+     
+     ["T-01", "T-02"]
+     
+     becomes:
      
      ["Andrea Lim", "Kai Santos"]
      
-     those exact existing Team members will be automatically
-     selected in the Team selector.
+     Example saved data:
      
-     If the old project contains:
+     ["Andrea Lim", "Kai Santos"]
      
-     "Andrea Lim, Kai Santos"
+     remains:
      
-     it is also converted correctly.
+     ["Andrea Lim", "Kai Santos"]
+     
+     Example saved data:
+     
+     [{ id: "T-01", name: "Andrea Lim" }]
+     
+     becomes:
+     
+     ["Andrea Lim"]
   ========================================================== */
 
-  function normalizeExistingTeamSelection(
+  function resolveExistingProjectTeam(
     value: unknown,
   ): string[] {
-    const existing =
+    const savedValues =
       normalizeProjectTeam(
         value,
       );
 
     if (
-      existing.length ===
+      savedValues.length ===
       0
     ) {
       return [];
@@ -564,28 +758,36 @@ export default function ProjectsPage() {
     const selectedNames: string[] =
       [];
 
-    existing.forEach(
-      (savedName) => {
-        const matchedMember =
-          findTeamMemberByName(
-            savedName,
+    savedValues.forEach(
+      (savedValue) => {
+        const matched =
+          findTeamMember(
+            savedValue,
           );
 
         const finalName =
-          matchedMember?.name ||
-          savedName;
+          matched?.name ||
+          savedValue;
 
         if (
-          finalName &&
-          !selectedNames.some(
+          !finalName
+        ) {
+          return;
+        }
+
+        const alreadyAdded =
+          selectedNames.some(
             (name) =>
-              normalizeTeamMemberName(
+              normalizeTeamMemberValue(
                 name,
               ) ===
-              normalizeTeamMemberName(
+              normalizeTeamMemberValue(
                 finalName,
               ),
-          )
+          );
+
+        if (
+          !alreadyAdded
         ) {
           selectedNames.push(
             finalName,
@@ -629,7 +831,9 @@ export default function ProjectsPage() {
         team: [],
       });
 
-      setTeamMenuOpen(false);
+      setTeamMenuOpen(
+        false,
+      );
 
       setOpen(true);
 
@@ -650,7 +854,9 @@ export default function ProjectsPage() {
   function openAdd() {
     setEditId(null);
 
-    setTeamMenuOpen(false);
+    setTeamMenuOpen(
+      false,
+    );
 
     setForm({
       ...emptyForm,
@@ -675,15 +881,13 @@ export default function ProjectsPage() {
      
      IMPORTANT:
      
-     Existing project.team is loaded into form.team.
+     Existing project.team is resolved against the actual
+     team_members table.
      
-     That means:
+     Those members are then placed into form.team.
      
-     Edit Project
-          ↓
-     Project Team
-          ↓
-     Existing members are already CHECKED
+     The Team selector uses form.team to determine which
+     checkboxes should display as CHECKED.
   ========================================================== */
 
   function openEdit(
@@ -703,10 +907,33 @@ export default function ProjectsPage() {
       return;
     }
 
+    /*
+     * Resolve the saved Team data against the Team page.
+     */
     const existingTeam =
-      normalizeExistingTeamSelection(
+      resolveExistingProjectTeam(
         project.team,
       );
+
+    console.log(
+      '[Projects] Opening edit project:',
+      {
+        projectId:
+          project.id,
+
+        projectName:
+          project.name,
+
+        savedTeam:
+          project.team,
+
+        resolvedTeam:
+          existingTeam,
+
+        availableTeamMembers:
+          allTeamMembers,
+      },
+    );
 
     setEditId(id);
 
@@ -739,7 +966,7 @@ export default function ProjectsPage() {
         getDefaultDeadline(),
 
       /*
-       * Existing team members are selected here.
+       * EXISTING MEMBERS ARE SELECTED HERE.
        */
       team:
         existingTeam,
@@ -749,68 +976,168 @@ export default function ProjectsPage() {
         'Medium',
     });
 
-    setTeamMenuOpen(false);
+    setTeamMenuOpen(
+      false,
+    );
 
     setOpen(true);
   }
 
   /* ==========================================================
+     CHECK WHETHER MEMBER IS SELECTED
+  ========================================================== */
+
+  function isTeamMemberSelected(
+    member: TeamMember,
+  ) {
+    return form.team.some(
+      (selectedName) => {
+        const selectedMember =
+          findTeamMember(
+            selectedName,
+          );
+
+        /*
+         * Prefer ID matching if available.
+         */
+        if (
+          selectedMember?.id &&
+          member.id
+        ) {
+          if (
+            normalizeTeamMemberValue(
+              selectedMember.id,
+            ) ===
+            normalizeTeamMemberValue(
+              member.id,
+            )
+          ) {
+            return true;
+          }
+        }
+
+        /*
+         * Fall back to name matching.
+         */
+        return (
+          normalizeTeamMemberValue(
+            selectedName,
+          ) ===
+          normalizeTeamMemberValue(
+            member.name,
+          )
+        );
+      },
+    );
+  }
+
+  /* ==========================================================
      TOGGLE TEAM MEMBER
      
-     Selecting:
+     Select:
      
      Andrea Lim
      
-     adds:
+     => ["Andrea Lim"]
      
-     ["Andrea Lim"]
+     Select another:
      
-     Clicking again removes:
+     => ["Andrea Lim", "Kai Santos"]
      
-     []
+     Click Andrea again:
+     
+     => ["Kai Santos"]
   ========================================================== */
 
   function toggleTeamMember(
-    memberName: string,
+    member: TeamMember,
   ) {
     setForm(
       (currentForm) => {
-        const alreadySelected =
+        const selected =
           currentForm.team.some(
-            (name) =>
-              normalizeTeamMemberName(
-                name,
-              ) ===
-              normalizeTeamMemberName(
-                memberName,
-              ),
+            (selectedName) => {
+              const selectedMember =
+                findTeamMember(
+                  selectedName,
+                );
+
+              if (
+                selectedMember?.id &&
+                member.id
+              ) {
+                return (
+                  normalizeTeamMemberValue(
+                    selectedMember.id,
+                  ) ===
+                  normalizeTeamMemberValue(
+                    member.id,
+                  )
+                );
+              }
+
+              return (
+                normalizeTeamMemberValue(
+                  selectedName,
+                ) ===
+                normalizeTeamMemberValue(
+                  member.name,
+                )
+              );
+            },
           );
 
-        if (
-          alreadySelected
-        ) {
+        /*
+         * Remove selected member.
+         */
+        if (selected) {
           return {
             ...currentForm,
 
             team:
               currentForm.team.filter(
-                (name) =>
-                  normalizeTeamMemberName(
-                    name,
-                  ) !==
-                  normalizeTeamMemberName(
-                    memberName,
-                  ),
+                (selectedName) => {
+                  const selectedMember =
+                    findTeamMember(
+                      selectedName,
+                    );
+
+                  if (
+                    selectedMember?.id &&
+                    member.id
+                  ) {
+                    return (
+                      normalizeTeamMemberValue(
+                        selectedMember.id,
+                      ) !==
+                      normalizeTeamMemberValue(
+                        member.id,
+                      )
+                    );
+                  }
+
+                  return (
+                    normalizeTeamMemberValue(
+                      selectedName,
+                    ) !==
+                    normalizeTeamMemberValue(
+                      member.name,
+                    )
+                  );
+                },
               ),
           };
         }
 
+        /*
+         * Add member using the actual Team page name.
+         */
         return {
           ...currentForm,
 
           team: [
             ...currentForm.team,
-            memberName,
+            member.name,
           ],
         };
       },
@@ -831,10 +1158,10 @@ export default function ProjectsPage() {
         team:
           currentForm.team.filter(
             (name) =>
-              normalizeTeamMemberName(
+              normalizeTeamMemberValue(
                 name,
               ) !==
-              normalizeTeamMemberName(
+              normalizeTeamMemberValue(
                 memberName,
               ),
           ),
@@ -849,7 +1176,7 @@ export default function ProjectsPage() {
   function getTeamMember(
     name: string,
   ) {
-    return findTeamMemberByName(
+    return findTeamMember(
       name,
     );
   }
@@ -867,7 +1194,9 @@ export default function ProjectsPage() {
 
     setEditId(null);
 
-    setTeamMenuOpen(false);
+    setTeamMenuOpen(
+      false,
+    );
 
     setForm({
       ...emptyForm,
@@ -887,10 +1216,6 @@ export default function ProjectsPage() {
     event: React.FormEvent,
   ) {
     event.preventDefault();
-
-    /* ========================================================
-       VALIDATION
-    ======================================================== */
 
     if (
       !form.name.trim()
@@ -912,10 +1237,6 @@ export default function ProjectsPage() {
       return;
     }
 
-    /*
-     * New projects created from a client workspace
-     * require client_id.
-     */
     if (
       !editId &&
       !form.client_id
@@ -934,26 +1255,13 @@ export default function ProjectsPage() {
     setSubmitting(true);
 
     try {
-      /* ======================================================
-         CLEAN TEAM ARRAY
-         
-         Example:
-         
-         [
-           "Andrea Lim",
-           "Andrea Lim",
-           "",
-           " Kai Santos "
-         ]
-         
-         becomes:
-         
-         [
-           "Andrea Lim",
-           "Kai Santos"
-         ]
-      ====================================================== */
-
+      /*
+       * Clean and deduplicate selected Team members.
+       *
+       * IMPORTANT:
+       *
+       * We save the actual Team page names.
+       */
       const cleanedTeam =
         Array.from(
           new Set(
@@ -962,30 +1270,22 @@ export default function ProjectsPage() {
                 (name) =>
                   name.trim(),
               )
-              .filter(Boolean),
+              .filter(Boolean)
+              .map(
+                (name) => {
+                  const member =
+                    findTeamMember(
+                      name,
+                    );
+
+                  return (
+                    member?.name ||
+                    name
+                  );
+                },
+              ),
           ),
         );
-
-      /* ======================================================
-         DATABASE PAYLOAD
-         
-         IMPORTANT:
-         
-         The existing project.team field is preserved.
-         
-         We are NOT creating a new team table relation here.
-         
-         The selected Team page members are saved to:
-         
-         project.team
-         
-         Example:
-         
-         [
-           "Andrea Lim",
-           "Kai Santos"
-         ]
-      ====================================================== */
 
       const payload = {
         name:
@@ -1011,6 +1311,9 @@ export default function ProjectsPage() {
         deadline:
           form.deadline,
 
+        /*
+         * SELECTED TEAM MEMBERS.
+         */
         team:
           cleanedTeam,
 
@@ -1018,8 +1321,16 @@ export default function ProjectsPage() {
           form.priority,
       };
 
+      console.log(
+        '[Projects] Saving project:',
+        {
+          editId,
+          payload,
+        },
+      );
+
       /* ======================================================
-         UPDATE EXISTING PROJECT
+         UPDATE
       ====================================================== */
 
       if (editId) {
@@ -1041,7 +1352,7 @@ export default function ProjectsPage() {
         );
 
         /*
-         * Synchronize form with returned database data.
+         * Keep the form synchronized with the returned record.
          */
         setForm({
           name:
@@ -1075,7 +1386,7 @@ export default function ProjectsPage() {
             form.deadline,
 
           team:
-            normalizeProjectTeam(
+            resolveExistingProjectTeam(
               updated?.team ??
                 cleanedTeam,
             ),
@@ -1085,19 +1396,15 @@ export default function ProjectsPage() {
             form.priority,
         });
 
-        /*
-         * Refresh Projects page.
-         */
         refetch();
 
-        /*
-         * Close edit dialog after successful save.
-         */
         setOpen(false);
 
         setEditId(null);
 
-        setTeamMenuOpen(false);
+        setTeamMenuOpen(
+          false,
+        );
 
         return;
       }
@@ -1119,9 +1426,6 @@ export default function ProjectsPage() {
         },
       );
 
-      /*
-       * Open Project File after creation.
-       */
       if (
         created?.id
       ) {
@@ -1150,7 +1454,9 @@ export default function ProjectsPage() {
 
       setEditId(null);
 
-      setTeamMenuOpen(false);
+      setTeamMenuOpen(
+        false,
+      );
 
       refetch();
     } catch (
@@ -1224,7 +1530,9 @@ export default function ProjectsPage() {
 
       setEditId(null);
 
-      setTeamMenuOpen(false);
+      setTeamMenuOpen(
+        false,
+      );
 
       refetch();
     } catch (
@@ -1536,7 +1844,7 @@ export default function ProjectsPage() {
                                 <Card
                                   className="cursor-pointer transition-shadow hover:shadow-md"
                                   onClick={() =>
-                                    openProjectFile(
+                                    openEdit(
                                       project.id,
                                     )
                                   }
@@ -1590,8 +1898,6 @@ export default function ProjectsPage() {
 
                                     <div className="mt-3 flex items-center justify-between">
 
-                                      {/* TEAM AVATARS */}
-
                                       <div className="flex -space-x-1.5">
 
                                         {projectTeam
@@ -1609,7 +1915,10 @@ export default function ProjectsPage() {
                                                   member
                                                 }
                                                 initials={getInitials(
-                                                  member,
+                                                  getTeamMember(
+                                                    member,
+                                                  )?.name ||
+                                                    member,
                                                 )}
                                                 className="h-6 w-6 border-2 border-card text-[9px]"
                                               />
@@ -1797,7 +2106,7 @@ export default function ProjectsPage() {
                           }
                           className="cursor-pointer"
                           onClick={() =>
-                            openProjectFile(
+                            openEdit(
                               project.id,
                             )
                           }
@@ -1857,7 +2166,10 @@ export default function ProjectsPage() {
                                         member
                                       }
                                       initials={getInitials(
-                                        member,
+                                        getTeamMember(
+                                          member,
+                                        )?.name ||
+                                          member,
                                       )}
                                       className="h-6 w-6 border-2 border-card text-[9px]"
                                     />
@@ -2352,25 +2664,9 @@ export default function ProjectsPage() {
             {/* ==================================================
                PROJECT TEAM
                
-               SAME SELECTOR FOR:
+               EDIT + NEW PROJECT
                
-               New Project
-               +
-               Edit Project
-               
-               Data source:
-               
-               fetchTeam()
-                    ↓
-               public.team_members
-               
-               Edit Project:
-               
-               project.team
-                    ↓
-               match against team_members
-                    ↓
-               automatically checked
+               Uses Team page records.
             ================================================== */}
 
             <div className="space-y-2">
@@ -2561,22 +2857,16 @@ export default function ProjectsPage() {
                         ) => {
 
                           /*
-                           * Determine whether this member is
-                           * currently selected.
+                           * THIS determines the checked
+                           * state.
                            *
-                           * This is what makes existing
-                           * Project Team members appear checked
-                           * when Edit Project is opened.
+                           * When Edit Project opens,
+                           * form.team already contains
+                           * the project's existing members.
                            */
                           const selected =
-                            form.team.some(
-                              (name) =>
-                                normalizeTeamMemberName(
-                                  name,
-                                ) ===
-                                normalizeTeamMemberName(
-                                  member.name,
-                                ),
+                            isTeamMemberSelected(
+                              member,
                             );
 
                           return (
@@ -2588,7 +2878,7 @@ export default function ProjectsPage() {
                               }
                               onClick={() =>
                                 toggleTeamMember(
-                                  member.name,
+                                  member,
                                 )
                               }
                               disabled={
