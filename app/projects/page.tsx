@@ -191,9 +191,7 @@ interface ProjectForm {
   deadline: string;
 
   /*
-   * IMPORTANT:
-   *
-   * Team is now an array.
+   * Team now contains selected team-member names.
    *
    * Example:
    *
@@ -328,8 +326,11 @@ export default function ProjectsPage() {
   /* ==========================================================
      TEAM DATA
      
-     THIS CONNECTS THE PROJECT PAGE
-     TO THE EXISTING TEAM PAGE DATA.
+     Connected to the existing Team page data source.
+     
+     fetchTeam() should return the records from:
+     
+     public.team_members
   ========================================================== */
 
   const {
@@ -341,8 +342,7 @@ export default function ProjectsPage() {
   );
 
   const allTeamMembers =
-    (team ??
-      []) as TeamMember[];
+    (team ?? []) as TeamMember[];
 
   function refetch() {
     setRefreshKey(
@@ -432,13 +432,13 @@ export default function ProjectsPage() {
      
      Supports BOTH:
      
-     1. Existing array
+     1. New array format
         ["Andrea Lim", "Kai Santos"]
      
-     2. Old string
+     2. Existing string format
         "Andrea Lim, Kai Santos"
      
-     This prevents old projects from breaking.
+     This keeps older projects compatible.
   ============================================================ */
 
   function normalizeProjectTeam(
@@ -469,6 +469,66 @@ export default function ProjectsPage() {
     }
 
     return [];
+  }
+
+  /* ============================================================
+     NORMALIZE TEAM MEMBER NAME
+     
+     Makes matching more reliable when editing an existing
+     project.
+  ============================================================ */
+
+  function normalizeTeamMemberName(
+    name: string,
+  ) {
+    return String(
+      name || '',
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  /* ============================================================
+     MATCH EXISTING PROJECT TEAM WITH CURRENT TEAM MEMBERS
+     
+     This allows old saved names to correctly select the
+     corresponding current Team member.
+  ============================================================ */
+
+  function normalizeExistingTeamSelection(
+    value: unknown,
+  ): string[] {
+    const existing =
+      normalizeProjectTeam(
+        value,
+      );
+
+    if (
+      existing.length ===
+      0
+    ) {
+      return [];
+    }
+
+    return existing.map(
+      (savedName) => {
+        const matchedMember =
+          allTeamMembers.find(
+            (member) =>
+              normalizeTeamMemberName(
+                member.name,
+              ) ===
+              normalizeTeamMemberName(
+                savedName,
+              ),
+          );
+
+        return (
+          matchedMember?.name ||
+          savedName
+        );
+      },
+    );
   }
 
   /* ============================================================
@@ -546,6 +606,11 @@ export default function ProjectsPage() {
 
   /* ============================================================
      EDIT PROJECT
+     
+     Loads ALL existing project values into the edit form.
+     
+     IMPORTANT:
+     Existing Project Team members are automatically selected.
   ============================================================ */
 
   function openEdit(
@@ -567,12 +632,8 @@ export default function ProjectsPage() {
 
     setEditId(id);
 
-    /*
-     * Load existing assigned team
-     * into the multi-select.
-     */
     const existingTeam =
-      normalizeProjectTeam(
+      normalizeExistingTeamSelection(
         project.team,
       );
 
@@ -627,8 +688,14 @@ export default function ProjectsPage() {
     setForm(
       (currentForm) => {
         const alreadySelected =
-          currentForm.team.includes(
-            memberName,
+          currentForm.team.some(
+            (name) =>
+              normalizeTeamMemberName(
+                name,
+              ) ===
+              normalizeTeamMemberName(
+                memberName,
+              ),
           );
 
         if (
@@ -640,8 +707,12 @@ export default function ProjectsPage() {
             team:
               currentForm.team.filter(
                 (name) =>
-                  name !==
-                  memberName,
+                  normalizeTeamMemberName(
+                    name,
+                  ) !==
+                  normalizeTeamMemberName(
+                    memberName,
+                  ),
               ),
           };
         }
@@ -672,21 +743,62 @@ export default function ProjectsPage() {
         team:
           currentForm.team.filter(
             (name) =>
-              name !==
-              memberName,
+              normalizeTeamMemberName(
+                name,
+              ) !==
+              normalizeTeamMemberName(
+                memberName,
+              ),
           ),
       }),
     );
   }
 
   /* ============================================================
-     SAVE PROJECT
+     RESET DIALOG STATE
+  ============================================================ */
+
+  function closeProjectDialog() {
+    if (submitting) {
+      return;
+    }
+
+    setOpen(false);
+
+    setEditId(null);
+
+    setTeamMenuOpen(false);
+
+    setForm({
+      ...emptyForm,
+
+      deadline:
+        getDefaultDeadline(),
+
+      team: [],
+    });
+  }
+
+  /* ============================================================
+     SAVE / UPDATE PROJECT
+     
+     CREATE:
+       insertProject(payload)
+     
+     EDIT:
+       updateProject(editId, payload)
+     
+     EVERY EDITABLE FIELD IS INCLUDED.
   ============================================================ */
 
   async function handleSubmit(
     event: React.FormEvent,
   ) {
     event.preventDefault();
+
+    /* ========================================================
+       VALIDATION
+    ======================================================== */
 
     if (
       !form.name.trim()
@@ -711,6 +823,9 @@ export default function ProjectsPage() {
     /*
      * A NEW project created from
      * a client must have client_id.
+     *
+     * Existing projects are allowed
+     * to keep their current client_id.
      */
     if (
       !editId &&
@@ -730,9 +845,32 @@ export default function ProjectsPage() {
     setSubmitting(true);
 
     try {
-      /* ========================================================
+      /* ======================================================
+         CLEAN TEAM ARRAY
+         
+         Removes:
+         - empty names
+         - accidental spaces
+         - duplicate members
+      ====================================================== */
+
+      const cleanedTeam =
+        Array.from(
+          new Set(
+            form.team
+              .map(
+                (name) =>
+                  name.trim(),
+              )
+              .filter(Boolean),
+          ),
+        );
+
+      /* ======================================================
          DATABASE PAYLOAD
-      ======================================================== */
+         
+         This contains every editable project field.
+      ====================================================== */
 
       const payload = {
         name:
@@ -759,30 +897,25 @@ export default function ProjectsPage() {
           form.deadline,
 
         /*
-         * IMPORTANT:
-         *
-         * Selected members are saved
-         * directly to the existing
-         * projects.team field.
+         * Existing projects.team field.
          *
          * Example:
          *
-         * ["Andrea Lim", "Kai Santos"]
+         * [
+         *   "Andrea Lim",
+         *   "Kai Santos"
+         * ]
          */
         team:
-          form.team
-            .map((name) =>
-              name.trim(),
-            )
-            .filter(Boolean),
+          cleanedTeam,
 
         priority:
           form.priority,
       };
 
-      /* ========================================================
-         UPDATE
-      ======================================================== */
+      /* ======================================================
+         UPDATE EXISTING PROJECT
+      ====================================================== */
 
       if (editId) {
         const updated =
@@ -791,99 +924,132 @@ export default function ProjectsPage() {
             payload,
           );
 
+        /*
+         * Update successful.
+         */
         toast.success(
           'Project updated successfully.',
-        );
-
-        /*
-         * Keep form synchronized
-         * with updated database data.
-         */
-        setForm({
-          name:
-            updated.name ||
-            '',
-
-          client:
-            updated.client ||
-            '',
-
-          client_id:
-            updated.client_id ??
-            null,
-
-          serviceType:
-            updated.serviceType ||
-            'Social Media',
-
-          stage:
-            updated.stage ||
-            'Discovery',
-
-          progress:
-            Number(
-              updated.progress,
-            ) || 0,
-
-          deadline:
-            updated.deadline ||
-            getDefaultDeadline(),
-
-          team:
-            normalizeProjectTeam(
-              updated.team,
-            ),
-
-          priority:
-            updated.priority ||
-            'Medium',
-        });
-      } else {
-        /* ======================================================
-           CREATE
-        ====================================================== */
-
-        const created =
-          await insertProject(
-            payload,
-          );
-
-        toast.success(
-          'Project created successfully.',
           {
             description:
-              `${created.name} is connected to ${created.client}.`,
+              `${updated?.name || form.name} has been updated.`,
           },
         );
 
         /*
-         * Open Project File page.
+         * Synchronize the form with the actual
+         * database response.
          */
-        if (
-          created?.id
-        ) {
-          setOpen(false);
+        setForm({
+          name:
+            updated?.name ||
+            form.name,
 
-          setEditId(null);
+          client:
+            updated?.client ||
+            form.client,
 
-          setTeamMenuOpen(
-            false,
-          );
+          client_id:
+            updated?.client_id ??
+            form.client_id ??
+            null,
 
-          refetch();
+          serviceType:
+            updated?.serviceType ||
+            form.serviceType,
 
-          router.push(
-            `/projects/${encodeURIComponent(
-              String(
-                created.id,
-              ),
-            )}`,
-          );
+          stage:
+            updated?.stage ||
+            form.stage,
 
-          return;
-        }
+          progress:
+            Number(
+              updated?.progress,
+            ) ||
+            0,
+
+          deadline:
+            updated?.deadline ||
+            form.deadline,
+
+          team:
+            normalizeProjectTeam(
+              updated?.team ??
+                cleanedTeam,
+            ),
+
+          priority:
+            updated?.priority ||
+            form.priority,
+        });
+
+        /*
+         * Refresh project data from Supabase.
+         *
+         * This ensures the Kanban board and List View
+         * immediately show the updated values.
+         */
+        refetch();
+
+        /*
+         * Close the Edit Project dialog after
+         * the update has succeeded.
+         */
+        setOpen(false);
+
+        setEditId(null);
+
+        setTeamMenuOpen(false);
+
+        return;
       }
 
+      /* ======================================================
+         CREATE NEW PROJECT
+      ====================================================== */
+
+      const created =
+        await insertProject(
+          payload,
+        );
+
+      toast.success(
+        'Project created successfully.',
+        {
+          description:
+            `${created.name} is connected to ${created.client}.`,
+        },
+      );
+
+      /*
+       * Open Project File page.
+       */
+      if (
+        created?.id
+      ) {
+        setOpen(false);
+
+        setEditId(null);
+
+        setTeamMenuOpen(
+          false,
+        );
+
+        refetch();
+
+        router.push(
+          `/projects/${encodeURIComponent(
+            String(
+              created.id,
+            ),
+          )}`,
+        );
+
+        return;
+      }
+
+      /*
+       * Fallback if no ID was returned.
+       */
       setOpen(false);
 
       setEditId(null);
@@ -900,7 +1066,9 @@ export default function ProjectsPage() {
       );
 
       toast.error(
-        'Failed to save project.',
+        editId
+          ? 'Failed to update project.'
+          : 'Failed to create project.',
         {
           description:
             error?.message ||
@@ -946,6 +1114,8 @@ export default function ProjectsPage() {
     }
 
     try {
+      setSubmitting(true);
+
       await deleteProject(
         id,
       );
@@ -977,6 +1147,8 @@ export default function ProjectsPage() {
             'Something went wrong while deleting the project.',
         },
       );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -1005,7 +1177,7 @@ export default function ProjectsPage() {
   /* ============================================================
      GET TEAM MEMBER DATA
      
-     Used to display role next to selected names.
+     Used to display additional data next to selected names.
   ============================================================ */
 
   function getTeamMember(
@@ -1013,8 +1185,12 @@ export default function ProjectsPage() {
   ) {
     return allTeamMembers.find(
       (member) =>
-        member.name ===
-        name,
+        normalizeTeamMemberName(
+          member.name,
+        ) ===
+        normalizeTeamMemberName(
+          name,
+        ),
     );
   }
 
@@ -1613,6 +1789,21 @@ export default function ProjectsPage() {
                                   ),
                                 )}
 
+                              {projectTeam.length >
+                                3 && (
+
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium">
+
+                                  +
+                                  {
+                                    projectTeam.length -
+                                    3
+                                  }
+
+                                </div>
+
+                              )}
+
                             </div>
 
                           </TableCell>
@@ -1661,6 +1852,13 @@ export default function ProjectsPage() {
           value,
         ) => {
 
+          if (
+            submitting &&
+            !value
+          ) {
+            return;
+          }
+
           setOpen(
             value,
           );
@@ -1673,6 +1871,15 @@ export default function ProjectsPage() {
             setTeamMenuOpen(
               false,
             );
+
+            setForm({
+              ...emptyForm,
+
+              deadline:
+                getDefaultDeadline(),
+
+              team: [],
+            });
           }
 
         }}
@@ -1717,14 +1924,18 @@ export default function ProjectsPage() {
                 onChange={(
                   event,
                 ) =>
-                  setForm({
-                    ...form,
+                  setForm(
+                    (
+                      current,
+                    ) => ({
+                      ...current,
 
-                    name:
-                      event
-                        .target
-                        .value,
-                  })
+                      name:
+                        event
+                          .target
+                          .value,
+                    }),
+                  )
                 }
                 placeholder="Bloom Skincare Website"
                 required
@@ -1750,14 +1961,18 @@ export default function ProjectsPage() {
                 onChange={(
                   event,
                 ) =>
-                  setForm({
-                    ...form,
+                  setForm(
+                    (
+                      current,
+                    ) => ({
+                      ...current,
 
-                    client:
-                      event
-                        .target
-                        .value,
-                  })
+                      client:
+                        event
+                          .target
+                          .value,
+                    }),
+                  )
                 }
                 required
               />
@@ -1811,12 +2026,16 @@ export default function ProjectsPage() {
                   onValueChange={(
                     value,
                   ) =>
-                    setForm({
-                      ...form,
+                    setForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
 
-                      serviceType:
-                        value,
-                    })
+                        serviceType:
+                          value,
+                      }),
+                    )
                   }
                 >
 
@@ -1868,12 +2087,16 @@ export default function ProjectsPage() {
                   onValueChange={(
                     value,
                   ) =>
-                    setForm({
-                      ...form,
+                    setForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
 
-                      stage:
-                        value as ProjectStage,
-                    })
+                        stage:
+                          value as ProjectStage,
+                      }),
+                    )
                   }
                 >
 
@@ -1923,15 +2146,19 @@ export default function ProjectsPage() {
                   onValueChange={(
                     value,
                   ) =>
-                    setForm({
-                      ...form,
+                    setForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
 
-                      priority:
-                        value as
-                          | 'Low'
-                          | 'Medium'
-                          | 'High',
-                    })
+                        priority:
+                          value as
+                            | 'Low'
+                            | 'Medium'
+                            | 'High',
+                      }),
+                    )
                   }
                 >
 
@@ -1984,14 +2211,18 @@ export default function ProjectsPage() {
                   onChange={(
                     event,
                   ) =>
-                    setForm({
-                      ...form,
+                    setForm(
+                      (
+                        current,
+                      ) => ({
+                        ...current,
 
-                      deadline:
-                        event
-                          .target
-                          .value,
-                    })
+                        deadline:
+                          event
+                            .target
+                            .value,
+                      }),
+                    )
                   }
                 />
 
@@ -2026,28 +2257,40 @@ export default function ProjectsPage() {
                 onValueChange={(
                   values,
                 ) =>
-                  setForm({
-                    ...form,
+                  setForm(
+                    (
+                      current,
+                    ) => ({
+                      ...current,
 
-                    progress:
-                      values[0] ??
-                      0,
-                  })
+                      progress:
+                        values[0] ??
+                        0,
+                    }),
+                  )
                 }
               />
 
             </div>
 
             {/* ==================================================
-               TEAM ASSIGNMENT
+               PROJECT TEAM
                
-               THIS IS THE NEW WORKING TEAM FIELD.
+               EDIT + CREATE USE THE SAME TEAM SELECTOR.
+               
+               Members come from:
+               
+               fetchTeam()
+                 ↓
+               team_members
+               
+               No manual comma-separated typing.
             ================================================== */}
 
             <div className="space-y-2">
 
               <Label>
-                Assign Team Members
+                Project Team
               </Label>
 
               <div className="relative">
@@ -2066,10 +2309,15 @@ export default function ProjectsPage() {
                         !current,
                     )
                   }
+                  disabled={
+                    submitting
+                  }
                   className={cn(
                     'flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors',
                     'hover:bg-accent hover:text-accent-foreground',
                     'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+                    submitting &&
+                      'cursor-not-allowed opacity-60',
                   )}
                 >
 
@@ -2143,13 +2391,15 @@ export default function ProjectsPage() {
 
                             <Avatar
                               initials={getInitials(
-                                memberName,
+                                member?.name ||
+                                  memberName,
                               )}
                               className="h-5 w-5 text-[8px]"
                             />
 
                             <span>
                               {
+                                member?.name ||
                                 memberName
                               }
                             </span>
@@ -2161,7 +2411,10 @@ export default function ProjectsPage() {
                                   memberName,
                                 )
                               }
-                              className="ml-0.5 rounded-full p-0.5 hover:bg-background"
+                              disabled={
+                                submitting
+                              }
+                              className="ml-0.5 rounded-full p-0.5 hover:bg-background disabled:pointer-events-none disabled:opacity-50"
                               aria-label={`Remove ${memberName}`}
                             >
                               ×
@@ -2218,8 +2471,14 @@ export default function ProjectsPage() {
                         ) => {
 
                           const selected =
-                            form.team.includes(
-                              member.name,
+                            form.team.some(
+                              (name) =>
+                                normalizeTeamMemberName(
+                                  name,
+                                ) ===
+                                normalizeTeamMemberName(
+                                  member.name,
+                                ),
                             );
 
                           return (
@@ -2234,11 +2493,16 @@ export default function ProjectsPage() {
                                   member.name,
                                 )
                               }
+                              disabled={
+                                submitting
+                              }
                               className={cn(
                                 'flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left text-sm transition-colors',
                                 'hover:bg-accent hover:text-accent-foreground',
                                 selected &&
                                   'bg-accent',
+                                submitting &&
+                                  'cursor-not-allowed opacity-60',
                               )}
                             >
 
@@ -2368,21 +2632,9 @@ export default function ProjectsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-
-                  setOpen(
-                    false,
-                  );
-
-                  setEditId(
-                    null,
-                  );
-
-                  setTeamMenuOpen(
-                    false,
-                  );
-
-                }}
+                onClick={
+                  closeProjectDialog
+                }
                 disabled={
                   submitting
                 }
@@ -2398,9 +2650,11 @@ export default function ProjectsPage() {
               >
 
                 {submitting
-                  ? 'Saving...'
+                  ? editId
+                    ? 'Updating...'
+                    : 'Creating...'
                   : editId
-                    ? 'Update'
+                    ? 'Update Project'
                     : 'Create Project'}
 
               </Button>
